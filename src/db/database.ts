@@ -280,6 +280,14 @@ export class AgentboardDB {
     return rows.map((r) => this.mapAgentPublicRow(r));
   }
 
+  getAllAgentsWithKeys(): Agent[] {
+    const rows = this.db
+      .prepare('SELECT * FROM agents ORDER BY created_at ASC')
+      .all() as AgentRow[];
+
+    return rows.map((r) => this.mapAgentRow(r));
+  }
+
   deleteAgent(id: string): boolean {
     const result = this.db
       .prepare('DELETE FROM agents WHERE id = ?')

@@ -16,7 +16,8 @@
       <select id="project-select">
         <option value="">-- select project --</option>
       </select>
-      <span id="agent-count" class="badge">0 agents</span>
+      <span id="agent-count" class="badge" onclick="openAgentsModal()" title="Show registered agents &amp; API keys">0 agents</span>
+      <button id="logout-btn" class="btn-logout" onclick="logout()" title="Sign out">Sign out</button>
     </div>
   </header>
 
@@ -114,6 +115,18 @@
       <div id="tab-history" class="modal-tab-content hidden">
         <div id="modal-revisions" class="modal-revisions"></div>
       </div>
+    </div>
+  </div>
+
+  <!-- Agents Modal (API keys) -->
+  <div id="agents-modal" class="modal-overlay hidden" onclick="closeAgentsModal(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div><span class="modal-title" style="font-size:18px">Registered Agents</span></div>
+        <button class="modal-close" onclick="closeAgentsModal()">&times;</button>
+      </div>
+      <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px">Copy an API key and share it with the agent so it can authenticate via <code style="color:var(--accent)">X-Api-Key</code> header.</p>
+      <div id="agents-list" class="agents-list"></div>
     </div>
   </div>
 

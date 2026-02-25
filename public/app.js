@@ -27,6 +27,11 @@ async function postJSON(url, body) {
   return res.json();
 }
 
+async function logout() {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  window.location.href = '/login.html';
+}
+
 // ---------------------------------------------------------------------------
 // Load data
 // ---------------------------------------------------------------------------
@@ -399,6 +404,63 @@ function switchTab(tabName) {
 window.openModal = openModal;
 window.closeModal = closeModal;
 window.switchTab = switchTab;
+
+// ---------------------------------------------------------------------------
+// Agents Modal (show API keys)
+// ---------------------------------------------------------------------------
+
+async function openAgentsModal() {
+  const modal = document.getElementById('agents-modal');
+  const list = document.getElementById('agents-list');
+  list.innerHTML = '<div class="agents-empty">Loading...</div>';
+  modal.classList.remove('hidden');
+
+  try {
+    const agentsWithKeys = await fetchJSON('/api/agents/keys');
+
+    if (agentsWithKeys.length === 0) {
+      list.innerHTML = '<div class="agents-empty">No agents registered yet.</div>';
+      return;
+    }
+
+    list.innerHTML = '';
+    agentsWithKeys.forEach(a => {
+      const row = document.createElement('div');
+      row.className = 'agent-row';
+      row.innerHTML = `
+        <div class="agent-row-info">
+          <div class="agent-row-name">\u{1f916} ${escapeHtml(a.name)}</div>
+          <div class="agent-row-key">${escapeHtml(a.apiKey)}</div>
+          <div class="agent-row-meta">ID: ${a.id.slice(0, 8)} &middot; Created: ${formatTime(a.createdAt)}</div>
+        </div>
+        <button class="btn-copy" onclick="copyApiKey(this, '${escapeHtml(a.apiKey)}')">Copy</button>
+      `;
+      list.appendChild(row);
+    });
+  } catch {
+    list.innerHTML = '<div class="agents-empty">Failed to load agents.</div>';
+  }
+}
+
+function closeAgentsModal(event) {
+  if (event && event.target !== event.currentTarget) return;
+  document.getElementById('agents-modal').classList.add('hidden');
+}
+
+function copyApiKey(btn, key) {
+  navigator.clipboard.writeText(key).then(() => {
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = 'Copy';
+      btn.classList.remove('copied');
+    }, 1500);
+  });
+}
+
+window.openAgentsModal = openAgentsModal;
+window.closeAgentsModal = closeAgentsModal;
+window.copyApiKey = copyApiKey;
 
 // ---------------------------------------------------------------------------
 // GraphQL WebSocket subscriptions (realtime)

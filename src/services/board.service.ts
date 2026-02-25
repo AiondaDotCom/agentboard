@@ -63,6 +63,10 @@ export class BoardService {
     return this.db.getAllAgents();
   }
 
+  getAllAgentsWithKeys(): Agent[] {
+    return this.db.getAllAgentsWithKeys();
+  }
+
   getAgentById(id: string): AgentPublic {
     const agent = this.db.getAgentById(id);
     if (!agent) throw new NotFoundError('Agent not found');

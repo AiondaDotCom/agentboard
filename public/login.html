@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agentboard — Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0f1219;
+      --bg-gradient: linear-gradient(145deg, #0f1219 0%, #151a28 50%, #121620 100%);
+      --surface: rgba(34, 38, 64, 0.65);
+      --glass-border: rgba(255, 255, 255, 0.08);
+      --border: rgba(255, 255, 255, 0.07);
+      --border-light: rgba(255, 255, 255, 0.12);
+      --text: #eaf0f6;
+      --text-dim: #7a839a;
+      --accent: #35b8c9;
+      --accent-hover: #42d0e3;
+      --accent-glow: rgba(53, 184, 201, 0.2);
+      --red: #ef4444;
+      --radius: 14px;
+      --radius-sm: 8px;
+      --shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      background-image: var(--bg-gradient);
+      background-attachment: fixed;
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background:
+        radial-gradient(ellipse at 20% 50%, rgba(53, 184, 201, 0.04) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, rgba(192, 38, 211, 0.03) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 80%, rgba(53, 184, 201, 0.02) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .login-card {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 400px;
+      padding: 40px 36px;
+      background: var(--surface);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .login-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .login-logo {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      color: var(--accent);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .login-title {
+      font-size: 22px;
+      font-weight: 700;
+    }
+
+    .login-subtitle {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-top: 6px;
+    }
+
+    .form-group {
+      margin-bottom: 18px;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+
+    input {
+      width: 100%;
+      padding: 12px 14px;
+      font-family: inherit;
+      font-size: 14px;
+      color: var(--text);
+      background: rgba(15, 18, 25, 0.6);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-glow);
+    }
+
+    input[readonly] {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    .btn-login {
+      width: 100%;
+      padding: 12px;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      color: #0f1219;
+      background: var(--accent);
+      border: none;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: background 0.2s, box-shadow 0.2s;
+      margin-top: 6px;
+    }
+
+    .btn-login:hover {
+      background: var(--accent-hover);
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+
+    .btn-login:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .error-msg {
+      color: var(--red);
+      font-size: 13px;
+      text-align: center;
+      margin-top: 14px;
+      min-height: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="login-header">
+      <div class="login-logo">Agentboard</div>
+      <h1 class="login-title">Sign in</h1>
+      <p class="login-subtitle">Enter your admin key to access the board</p>
+    </div>
+
+    <form id="login-form" autocomplete="on">
+      <div class="form-group" style="position:absolute;left:-9999px;opacity:0;height:0;overflow:hidden;">
+        <label for="username">User</label>
+        <input type="text" id="username" name="username" value="admin" autocomplete="username" tabindex="-1" readonly>
+      </div>
+      <div class="form-group">
+        <label for="password">Admin Key</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" required autofocus>
+      </div>
+      <button type="submit" class="btn-login" id="btn-login">Sign in</button>
+      <div id="error" class="error-msg"></div>
+    </form>
+  </div>
+
+  <script>
+    const form = document.getElementById('login-form');
+    const btn = document.getElementById('btn-login');
+    const errorEl = document.getElementById('error');
+    const passwordEl = document.getElementById('password');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorEl.textContent = '';
+      btn.disabled = true;
+      btn.textContent = 'Signing in...';
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: passwordEl.value.trim() }),
+        });
+
+        if (res.ok) {
+          window.location.href = '/';
+        } else {
+          const data = await res.json();
+          errorEl.textContent = data.error || 'Invalid key';
+        }
+      } catch {
+        errorEl.textContent = 'Connection failed';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sign in';
+      }
+    });
+  </script>
+</body>
+</html>
