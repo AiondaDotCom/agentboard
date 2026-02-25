@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agentboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="header-left">
+      <img src="aionda_logo.png" alt="Aionda" class="logo-img">
+      <span class="logo-text">agentboard</span>
+    </div>
+    <div class="header-right">
+      <select id="project-select">
+        <option value="">-- select project --</option>
+      </select>
+      <span id="agent-count" class="badge">0 agents</span>
+    </div>
+  </header>
+
+  <main id="board" class="board hidden">
+    <div class="column" data-column="backlog">
+      <div class="column-header">
+        <span class="column-title">BACKLOG</span>
+        <span class="column-count">0</span>
+      </div>
+      <div class="ticket-list"></div>
+    </div>
+    <div class="column" data-column="ready">
+      <div class="column-header">
+        <span class="column-title">READY</span>
+        <span class="column-count">0</span>
+      </div>
+      <div class="ticket-list"></div>
+    </div>
+    <div class="column" data-column="in_progress">
+      <div class="column-header">
+        <span class="column-title">IN PROGRESS</span>
+        <span class="column-count">0</span>
+      </div>
+      <div class="ticket-list"></div>
+    </div>
+    <div class="column" data-column="in_review">
+      <div class="column-header">
+        <span class="column-title">IN REVIEW</span>
+        <span class="column-count">0</span>
+      </div>
+      <div class="ticket-list"></div>
+    </div>
+    <div class="column" data-column="done">
+      <div class="column-header">
+        <span class="column-title">DONE</span>
+        <span class="column-count">0</span>
+      </div>
+      <div class="ticket-list"></div>
+    </div>
+  </main>
+
+  <div id="loading-screen" class="loading-screen">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <h2>Connecting...</h2>
+      <p>Waiting for agents and projects</p>
+    </div>
+  </div>
+
+  <div id="no-project" class="no-project" style="display:none">
+    <div class="no-project-content">
+      <h2>Select a project</h2>
+      <p>Choose a project from the dropdown to view the Kanban board. AI agents control the board via REST API &mdash; you watch in realtime.</p>
+    </div>
+  </div>
+
+  <footer id="activity-feed" class="activity-feed hidden">
+    <div class="activity-header">
+      <span>ACTIVITY FEED</span>
+      <span id="activity-count">0 events</span>
+    </div>
+    <div id="activity-list" class="activity-list"></div>
+  </footer>
+
+  <div id="audit-panel" class="audit-panel hidden">
+    <div class="audit-header">
+      <span>AUDIT LOG</span>
+      <button id="audit-toggle" class="btn-small">Show</button>
+    </div>
+    <div id="audit-list" class="audit-list hidden"></div>
+  </div>
+
+  <!-- Ticket Detail Modal -->
+  <div id="ticket-modal" class="modal-overlay hidden" onclick="closeModal(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div>
+          <span id="modal-ticket-id" class="modal-ticket-id"></span>
+          <span id="modal-column-badge" class="modal-column-badge"></span>
+        </div>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+      <h2 id="modal-title" class="modal-title"></h2>
+      <div id="modal-agent" class="modal-agent"></div>
+      <pre id="modal-desc" class="modal-desc"></pre>
+
+      <div class="modal-tabs">
+        <button class="modal-tab active" data-tab="comments" onclick="switchTab('comments')">Comments</button>
+        <button class="modal-tab" data-tab="history" onclick="switchTab('history')">History</button>
+      </div>
+
+      <div id="tab-comments" class="modal-tab-content">
+        <div id="modal-comments" class="modal-comments"></div>
+      </div>
+      <div id="tab-history" class="modal-tab-content hidden">
+        <div id="modal-revisions" class="modal-revisions"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

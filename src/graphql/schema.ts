@@ -1,0 +1,65 @@
+// ---------------------------------------------------------------------------
+// Agentboard – GraphQL type definitions
+// ---------------------------------------------------------------------------
+
+import { gql } from 'graphql-tag';
+
+export const typeDefs = gql`
+  type Agent {
+    id: ID!
+    name: String!
+    createdAt: String!
+  }
+
+  type Ticket {
+    id: ID!
+    projectId: String!
+    title: String!
+    description: String
+    column: String!
+    position: Int!
+    agent: Agent
+    agentId: String
+    comments: [Comment!]!
+    createdAt: String!
+    updatedAt: String!
+  }
+
+  type Project {
+    id: ID!
+    name: String!
+    description: String
+    tickets: [Ticket!]!
+    createdAt: String!
+  }
+
+  type Comment {
+    id: ID!
+    ticketId: String!
+    agent: Agent
+    body: String!
+    createdAt: String!
+  }
+
+  type Activity {
+    id: ID!
+    agent: Agent
+    ticketId: String!
+    action: String!
+    details: String
+    timestamp: String!
+  }
+
+  type Query {
+    projects: [Project!]!
+    project(id: ID!): Project
+    agents: [Agent!]!
+  }
+
+  type Subscription {
+    ticketCreated(projectId: ID!): Ticket!
+    ticketUpdated(projectId: ID!): Ticket!
+    ticketMoved(projectId: ID!): Ticket!
+    activityAdded(projectId: ID!): Activity!
+  }
+`;
