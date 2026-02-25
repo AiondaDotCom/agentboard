@@ -2,21 +2,26 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import { AgentboardDB } from '../../src/db/database.js';
+import { BoardService } from '../../src/services/board.service.js';
 import { createAuditMiddleware } from '../../src/api/middleware/audit.js';
 import { createAuditRoutes } from '../../src/api/routes/audit.js';
 import { createAgentRoutes } from '../../src/api/routes/agents.js';
 
 describe('Audit Middleware', () => {
   let db: AgentboardDB;
+  let service: BoardService;
   let app: express.Express;
+  let adminKey: string;
 
   beforeEach(() => {
     db = new AgentboardDB(':memory:');
+    service = new BoardService(db);
+    adminKey = service.getOrCreateAdminKey();
     app = express();
     app.use(express.json());
     app.use('/api', createAuditMiddleware(db));
-    app.use('/api/agents', createAgentRoutes(db, 'test-admin-key'));
-    app.use('/api/audit', createAuditRoutes(db));
+    app.use('/api/agents', createAgentRoutes(service));
+    app.use('/api/audit', createAuditRoutes(service));
   });
 
   afterEach(() => {
@@ -40,7 +45,7 @@ describe('Audit Middleware', () => {
   it('should log POST requests with body to audit log', async () => {
     await request(app)
       .post('/api/agents')
-      .set('X-Admin-Key', 'test-admin-key')
+      .set('X-Admin-Key', adminKey)
       .send({ name: 'audit-bot' });
 
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -70,13 +75,15 @@ describe('Audit Middleware', () => {
 
 describe('Audit Routes', () => {
   let db: AgentboardDB;
+  let service: BoardService;
   let app: express.Express;
 
   beforeEach(() => {
     db = new AgentboardDB(':memory:');
+    service = new BoardService(db);
     app = express();
     app.use(express.json());
-    app.use('/api/audit', createAuditRoutes(db));
+    app.use('/api/audit', createAuditRoutes(service));
   });
 
   afterEach(() => {

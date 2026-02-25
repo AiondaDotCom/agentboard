@@ -12,7 +12,7 @@ export const EVENTS = {
   ACTIVITY_ADDED: 'ACTIVITY_ADDED',
 } as const;
 
-class PubSub {
+export class PubSub {
   private emitter: EventEmitter;
 
   constructor() {

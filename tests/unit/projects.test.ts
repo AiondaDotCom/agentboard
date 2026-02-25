@@ -2,19 +2,22 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import { AgentboardDB } from '../../src/db/database.js';
+import { BoardService } from '../../src/services/board.service.js';
 import { createProjectRoutes } from '../../src/api/routes/projects.js';
-
-const ADMIN_KEY = 'test-admin-key';
 
 describe('Project Routes', () => {
   let db: AgentboardDB;
+  let service: BoardService;
   let app: express.Express;
+  let ADMIN_KEY: string;
 
   beforeEach(() => {
     db = new AgentboardDB(':memory:');
+    service = new BoardService(db);
+    ADMIN_KEY = service.getOrCreateAdminKey();
     app = express();
     app.use(express.json());
-    app.use('/api/projects', createProjectRoutes(db, ADMIN_KEY));
+    app.use('/api/projects', createProjectRoutes(service));
   });
 
   afterEach(() => {

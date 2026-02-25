@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
-import type { AgentboardDB } from '../../db/database.js';
+import type { BoardService } from '../../services/board.service.js';
 
-export function createAuditRoutes(db: AgentboardDB): Router {
+export function createAuditRoutes(service: BoardService): Router {
   const router: Router = Router();
 
   // GET /api/audit - Get all audit entries (no auth, read-only for human)
@@ -11,7 +11,7 @@ export function createAuditRoutes(db: AgentboardDB): Router {
     const limit = typeof limitParam === 'string' ? parseInt(limitParam, 10) : 100;
     const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 1000) : 100;
 
-    const entries = db.getAllAuditEntries(safeLimit);
+    const entries = service.getAllAuditEntries(safeLimit);
     res.json(entries);
   });
 
@@ -22,7 +22,7 @@ export function createAuditRoutes(db: AgentboardDB): Router {
     const limit = typeof limitParam === 'string' ? parseInt(limitParam, 10) : 100;
     const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 1000) : 100;
 
-    const entries = db.getAuditEntriesByAgent(agentId, safeLimit);
+    const entries = service.getAuditEntriesByAgent(agentId, safeLimit);
     res.json(entries);
   });
 

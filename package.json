@@ -23,6 +23,7 @@
   "dependencies": {
     "@apollo/server": "^4.11.0",
     "@graphql-tools/schema": "^10.0.31",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "better-sqlite3": "^11.6.0",
     "cors": "^2.8.5",
     "express": "^4.21.0",
@@ -30,7 +31,8 @@
     "graphql-tag": "^2.12.6",
     "graphql-ws": "^5.16.0",
     "uuid": "^11.0.0",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

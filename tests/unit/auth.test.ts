@@ -2,18 +2,21 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import { AgentboardDB } from '../../src/db/database.js';
+import { BoardService } from '../../src/services/board.service.js';
 import { createAuthMiddleware } from '../../src/api/middleware/auth.js';
 
 describe('Auth Middleware', () => {
   let db: AgentboardDB;
+  let service: BoardService;
   let app: express.Express;
 
   beforeEach(() => {
     db = new AgentboardDB(':memory:');
+    service = new BoardService(db);
     app = express();
     app.use(express.json());
 
-    const auth = createAuthMiddleware(db);
+    const auth = createAuthMiddleware(service);
     app.get('/protected', auth, (_req, res) => {
       res.json({ ok: true });
     });

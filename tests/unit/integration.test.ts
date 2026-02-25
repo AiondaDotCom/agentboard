@@ -2,17 +2,18 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import { AgentboardDB } from '../../src/db/database.js';
+import { BoardService } from '../../src/services/board.service.js';
 import { createAgentRoutes } from '../../src/api/routes/agents.js';
 import { createProjectRoutes } from '../../src/api/routes/projects.js';
 import { createTicketRoutes, createHumanTicketRoutes } from '../../src/api/routes/tickets.js';
 import { createAuditRoutes } from '../../src/api/routes/audit.js';
 import { createAuditMiddleware } from '../../src/api/middleware/audit.js';
 
-const ADMIN_KEY = 'integration-test-admin-key';
-
 describe('Integration: Full API Workflow', () => {
   let db: AgentboardDB;
+  let service: BoardService;
   let app: express.Express;
+  let ADMIN_KEY: string;
 
   // Shared state across sequential tests
   let clawbotId: string;
@@ -26,14 +27,16 @@ describe('Integration: Full API Workflow', () => {
 
   beforeAll(() => {
     db = new AgentboardDB(':memory:');
+    service = new BoardService(db);
+    ADMIN_KEY = service.getOrCreateAdminKey();
     app = express();
     app.use(express.json());
     app.use('/api', createAuditMiddleware(db));
-    app.use('/api/agents', createAgentRoutes(db, ADMIN_KEY));
-    app.use('/api/projects', createProjectRoutes(db, ADMIN_KEY));
-    app.use('/api/projects/:id', createTicketRoutes(db));
-    app.use('/api/projects/:id', createHumanTicketRoutes(db));
-    app.use('/api/audit', createAuditRoutes(db));
+    app.use('/api/agents', createAgentRoutes(service));
+    app.use('/api/projects', createProjectRoutes(service));
+    app.use('/api/projects/:id', createTicketRoutes(service));
+    app.use('/api/projects/:id', createHumanTicketRoutes(service));
+    app.use('/api/audit', createAuditRoutes(service));
     // Activity route
     app.get('/api/projects/:id/activity', (req, res): void => {
       const id = String(req.params['id'] ?? '');

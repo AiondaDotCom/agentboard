@@ -2,20 +2,23 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import { AgentboardDB } from '../../src/db/database.js';
+import { BoardService } from '../../src/services/board.service.js';
 import { createTicketRoutes, createHumanTicketRoutes } from '../../src/api/routes/tickets.js';
 
 describe('Ticket Routes', () => {
   let db: AgentboardDB;
+  let service: BoardService;
   let app: express.Express;
   let apiKey: string;
   let projectId: string;
 
   beforeEach(async () => {
     db = new AgentboardDB(':memory:');
+    service = new BoardService(db);
     app = express();
     app.use(express.json());
-    app.use('/api/projects/:id', createTicketRoutes(db));
-    app.use('/api/projects/:id', createHumanTicketRoutes(db));
+    app.use('/api/projects/:id', createTicketRoutes(service));
+    app.use('/api/projects/:id', createHumanTicketRoutes(service));
 
     apiKey = db.createAgent('bot1').apiKey;
     projectId = db.createProject('test-project').id;

@@ -461,8 +461,8 @@ function connectWebSocket(projectId) {
 
 function subscribe(socket, id, eventName, projectId) {
   const query = eventName === 'activityAdded'
-    ? `subscription { ${eventName}(projectId: "${projectId}") { id agentId ticketId action details timestamp } }`
-    : `subscription { ${eventName}(projectId: "${projectId}") { id projectId title description column position agentId createdAt updatedAt } }`;
+    ? `subscription { ${eventName}(projectId: "${projectId}") { id agent { id name } ticketId action details timestamp } }`
+    : `subscription { ${eventName}(projectId: "${projectId}") { id projectId title description column position agentId agent { id name } createdAt updatedAt } }`;
 
   socket.send(JSON.stringify({
     id,

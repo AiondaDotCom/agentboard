@@ -1,18 +1,33 @@
+// ---------------------------------------------------------------------------
+// Authentication middleware
+// ---------------------------------------------------------------------------
+
 import type { Request, Response, NextFunction } from 'express';
-import type { AgentboardDB } from '../../db/database.js';
+
+/**
+ * Minimal interface so both AgentboardDB and BoardService can be used.
+ */
+export interface AuthProvider {
+  getAgentByApiKey(apiKey: string): { id: string } | undefined;
+  getOrCreateAdminKey(): string;
+}
 
 export interface AuthenticatedRequest extends Request {
   agentId?: string;
 }
 
-export function createAuthMiddleware(db: AgentboardDB): (req: AuthenticatedRequest, res: Response, next: NextFunction) => void {
+/**
+ * Validates X-Api-Key header against registered agents.
+ * Sets req.agentId on success.
+ */
+export function createAuthMiddleware(provider: AuthProvider): (req: AuthenticatedRequest, res: Response, next: NextFunction) => void {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
     const apiKey = req.headers['x-api-key'];
     if (typeof apiKey !== 'string' || apiKey.length === 0) {
       res.status(401).json({ error: 'Missing X-Api-Key header' });
       return;
     }
-    const agent = db.getAgentByApiKey(apiKey);
+    const agent = provider.getAgentByApiKey(apiKey);
     if (!agent) {
       res.status(403).json({ error: 'Invalid API key' });
       return;
@@ -23,10 +38,10 @@ export function createAuthMiddleware(db: AgentboardDB): (req: AuthenticatedReque
 }
 
 /**
- * Admin auth middleware. Accepts either a static key string or a DB instance
- * (reads the key dynamically from the settings table so key rotation works immediately).
+ * Admin auth middleware. Accepts either a static key string or an AuthProvider
+ * (reads the key dynamically so key rotation works immediately).
  */
-export function createAdminAuthMiddleware(adminKeyOrDb: string | AgentboardDB): (req: Request, res: Response, next: NextFunction) => void {
+export function createAdminAuthMiddleware(keyOrProvider: string | AuthProvider): (req: Request, res: Response, next: NextFunction) => void {
   return (req: Request, res: Response, next: NextFunction): void => {
     const key = req.headers['x-admin-key'];
     if (typeof key !== 'string' || key.length === 0) {
@@ -34,9 +49,9 @@ export function createAdminAuthMiddleware(adminKeyOrDb: string | AgentboardDB): 
       return;
     }
 
-    const expected = typeof adminKeyOrDb === 'string'
-      ? adminKeyOrDb
-      : adminKeyOrDb.getOrCreateAdminKey();
+    const expected = typeof keyOrProvider === 'string'
+      ? keyOrProvider
+      : keyOrProvider.getOrCreateAdminKey();
 
     if (key !== expected) {
       res.status(403).json({ error: 'Invalid admin key' });
