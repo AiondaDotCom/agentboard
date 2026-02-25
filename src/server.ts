@@ -45,7 +45,8 @@ function parseCookies(header: string | undefined): Record<string, string> {
 // ---------------------------------------------------------------------------
 // Database + Service layer
 // ---------------------------------------------------------------------------
-const db = new AgentboardDB();
+const DB_PATH = process.env['DB_PATH'] || 'agentboard.db';
+const db = new AgentboardDB(DB_PATH);
 const service = new BoardService(db);
 
 // Admin key: stored in SQLite (generated once, persisted forever).
