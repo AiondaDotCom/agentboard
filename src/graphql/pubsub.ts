@@ -13,6 +13,7 @@ export const EVENTS = {
   AGENT_CHANGED: 'AGENT_CHANGED',
   PROJECT_CHANGED: 'PROJECT_CHANGED',
   TICKET_VIEWED: 'TICKET_VIEWED',
+  AUDIT_ADDED: 'AUDIT_ADDED',
 } as const;
 
 export class PubSub {

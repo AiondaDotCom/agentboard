@@ -62,7 +62,8 @@ interface CommentRow {
 interface ActivityRow {
   id: string;
   agent_id: string | null;
-  ticket_id: string;
+  ticket_id: string | null;
+  project_id: string | null;
   action: string;
   details: string;
   timestamp: string;
@@ -515,17 +516,18 @@ export class AgentboardDB {
 
   logActivity(
     agentId: string | null,
-    ticketId: string,
+    ticketId: string | null,
     action: ActivityAction,
     details: string,
+    projectId?: string | null,
   ): Activity {
     const id = uuidv4();
 
     this.db
       .prepare(
-        'INSERT INTO activity_log (id, agent_id, ticket_id, action, details) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO activity_log (id, agent_id, ticket_id, project_id, action, details) VALUES (?, ?, ?, ?, ?, ?)',
       )
-      .run(id, agentId, ticketId, action, details);
+      .run(id, agentId, ticketId, projectId ?? null, action, details);
 
     const row = this.db
       .prepare('SELECT * FROM activity_log WHERE id = ?')
@@ -539,11 +541,11 @@ export class AgentboardDB {
       .prepare(
         `SELECT a.*
          FROM activity_log a
-         INNER JOIN tickets t ON t.id = a.ticket_id
-         WHERE t.project_id = ?
+         LEFT JOIN tickets t ON t.id = a.ticket_id
+         WHERE t.project_id = ? OR a.project_id = ?
          ORDER BY a.timestamp DESC`,
       )
-      .all(projectId) as ActivityRow[];
+      .all(projectId, projectId) as ActivityRow[];
 
     return rows.map((r) => this.mapActivityRow(r));
   }

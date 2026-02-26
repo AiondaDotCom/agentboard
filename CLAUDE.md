@@ -13,9 +13,9 @@ HTTP Server (src/server.ts, port 3000)
 ```
 
 - **Ein Prozess**: REST, MCP und WebSocket laufen im selben Node-Prozess. MCP-Aenderungen triggern sofort WebSocket-Events.
-- **Single business layer**: `BoardService` ist der einzige Zugang zur DB fuer Business-Operationen. REST und MCP rufen beide den Service auf – nie direkt die DB.
+- **Single business layer**: `BoardService` ist der einzige Zugang zur DB fuer Business-Operationen. REST und MCP rufen beide den Service auf – nie direkt die DB. **ALL business logic MUST live in BoardService.** REST routes and MCP tools are thin adapters only – they handle I/O (HTTP, JSON-RPC) and delegate to the service. Never put business logic (validation, PubSub events, activity logging) in routes or MCP tool handlers.
 - **DB Layer** (`AgentboardDB`): Reiner Datenzugriff, Row-Mapping, keine Business-Logik.
-- **Audit Middleware**: HTTP-Request-Logging bleibt als Infrastruktur direkt am DB-Layer.
+- **Audit Middleware**: HTTP-Request-Logging (REST + MCP) als Infrastruktur direkt am DB-Layer.
 - **PubSub**: Global Singleton (`src/graphql/pubsub.ts`), vom Service genutzt fuer WebSocket-Events.
 
 ## Tech Stack

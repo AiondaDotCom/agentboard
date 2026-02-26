@@ -176,13 +176,16 @@ function authenticateMcpRequest(
   return agent;
 }
 
-/** Helper: create a new MCP transport + server for an agent. */
+/** Helper: create a new MCP transport + server for an agent.
+ *  If reuseSessionId is given, the transport will reuse that session ID
+ *  instead of generating a new one (used for auto-recovery). */
 async function createMcpTransport(
   agentId: string,
   agentName: string,
+  reuseSessionId?: string,
 ): Promise<StreamableHTTPServerTransport> {
   const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: () => randomUUID(),
+    sessionIdGenerator: reuseSessionId ? () => reuseSessionId : () => randomUUID(),
     onsessioninitialized: (sid: string) => {
       mcpSessions[sid] = { transport, agentId };
       db.createMcpSession(sid, agentId);
@@ -219,6 +222,66 @@ function mcpError(
   });
 }
 
+/** Auto-recover a stale/lost MCP session transparently.
+ *  Creates a new transport with the same session ID and runs the
+ *  initialize handshake internally via Web Standard Request objects
+ *  (bypasses the @hono/node-server wrapper that needs real Node HTTP objects). */
+async function autoRecoverMcpSession(
+  agentId: string,
+  agentName: string,
+  sessionId: string,
+): Promise<StreamableHTTPServerTransport> {
+  // Remove stale DB record if present
+  db.deleteMcpSession(sessionId);
+
+  const transport = await createMcpTransport(agentId, agentName, sessionId);
+
+  // Access the internal web standard transport directly
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const webTransport = (transport as any)._webStandardTransport;
+
+  // Step 1: Synthetic initialize request using Web Standard Request
+  const initBody = {
+    jsonrpc: '2.0', method: 'initialize', id: '__auto_recover__',
+    params: {
+      protocolVersion: '2025-03-26',
+      capabilities: {},
+      clientInfo: { name: 'agentboard-auto-recovery', version: '1.0.0' },
+    },
+  };
+  const initRequest = new Request('http://localhost/mcp', {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json, text/event-stream',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(initBody),
+  });
+
+  const initResponse: Response = await webTransport.handleRequest(initRequest, { parsedBody: initBody });
+  // Drain the SSE response stream to ensure the handshake completes
+  if (initResponse.body) {
+    const reader = initResponse.body.getReader();
+    while (true) { const { done } = await reader.read(); if (done) break; }
+  }
+
+  // Step 2: Initialized notification to complete protocol handshake
+  const notifBody = { jsonrpc: '2.0', method: 'notifications/initialized' };
+  const notifRequest = new Request('http://localhost/mcp', {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json, text/event-stream',
+      'Content-Type': 'application/json',
+      'Mcp-Session-Id': sessionId,
+    },
+    body: JSON.stringify(notifBody),
+  });
+  await webTransport.handleRequest(notifRequest, { parsedBody: notifBody });
+
+  console.info(`[MCP] Auto-recovered session ${sessionId} for agent ${agentName}`);
+  return transport;
+}
+
 // POST /mcp – JSON-RPC messages + initialization
 app.post('/mcp', async (req, res) => {
   // Check Accept header before SDK does (SDK returns a cryptic 406)
@@ -233,6 +296,7 @@ app.post('/mcp', async (req, res) => {
 
   const agent = authenticateMcpRequest(req, res);
   if (!agent) return;
+
 
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
   const reqId = req.body?.id;
@@ -256,33 +320,22 @@ app.post('/mcp', async (req, res) => {
       return;
     }
 
-    // Case 3: Stale session (known in DB but lost from memory after restart)
+    // Case 3: Stale/unknown session ID → auto-recover transparently
     if (sessionId) {
       const persistedAgentId = db.getMcpSessionAgentId(sessionId);
-
-      if (persistedAgentId) {
-        if (persistedAgentId !== agent.id) {
-          mcpError(res, 403, -32002, 'Session belongs to a different agent.', { recovery: 'send_initialize', reason: 'wrong_agent' }, reqId);
-          return;
-        }
-        db.deleteMcpSession(sessionId);
-        // Return 404 so MCP SDK clients (like Claude Code) auto-reinitialize
-        mcpError(res, 404, -32004,
-          'MCP session expired because the server was restarted. Your API key is still valid. Action required: Send a new JSON-RPC "initialize" request to POST /mcp with your X-Api-Key header. A new session will be created automatically. You do NOT need to change your API key or any other configuration.',
-          { recovery: 'send_initialize', reason: 'server_restart' }, reqId);
+      if (persistedAgentId && persistedAgentId !== agent.id) {
+        mcpError(res, 403, -32002, 'Session belongs to a different agent.', { recovery: 'send_initialize', reason: 'wrong_agent' }, reqId);
         return;
       }
-
-      // Completely unknown session ID
-      mcpError(res, 404, -32003,
-        'Unknown MCP session ID – this session has never existed or was already deleted. Action required: Send a new JSON-RPC "initialize" request (method: "initialize") to POST /mcp with your X-Api-Key header to create a new session.',
-        { recovery: 'send_initialize', reason: 'unknown_session' }, reqId);
+      // Auto-recover: recreate session with same ID so the client continues seamlessly
+      const transport = await autoRecoverMcpSession(agent.id, agent.name, sessionId);
+      await transport.handleRequest(req, res, req.body);
       return;
     }
 
     // Case 4: No session ID and not an initialize request
     mcpError(res, 400, -32000,
-      'Missing MCP session. You must first establish a session before calling tools. Action required: Send a JSON-RPC "initialize" request (method: "initialize") to POST /mcp with your X-Api-Key header. The server will respond with an Mcp-Session-Id header – include that header in all subsequent requests.',
+      'Missing MCP session. Send an "initialize" request first to establish a session.',
       { recovery: 'send_initialize', reason: 'no_session' }, reqId);
   } catch {
     if (!res.headersSent) {
@@ -297,6 +350,7 @@ app.post('/mcp', async (req, res) => {
 app.get('/mcp', async (req, res) => {
   const agent = authenticateMcpRequest(req, res);
   if (!agent) return;
+
 
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
   if (!sessionId || !mcpSessions[sessionId]) {
@@ -319,6 +373,7 @@ app.get('/mcp', async (req, res) => {
 app.delete('/mcp', async (req, res) => {
   const agent = authenticateMcpRequest(req, res);
   if (!agent) return;
+
 
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
   if (!sessionId || !mcpSessions[sessionId]) {
@@ -407,7 +462,7 @@ async function start(): Promise<void> {
   httpServer.listen(PORT, () => {
     console.info(`
 ╔═══════════════════════════════════════════════════════════╗
-║              🤖  A G E N T B O A R D  🤖                ║
+║           🤖  A I   A G E N T B O A R D  🤖             ║
 ╠═══════════════════════════════════════════════════════════╣
 ║  HTTP:      http://localhost:${PORT}                       ║
 ║  GraphQL:   http://localhost:${PORT}/graphql                ║

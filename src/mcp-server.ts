@@ -33,24 +33,24 @@ export function registerMcpTools(
 
   // --- Projects ---
   mcp.tool('list_projects', 'List all projects on the board', {},
-    async () => ok(service.getAllProjects()));
+    async () => ok(service.getAllProjects(agentId)));
 
   mcp.tool('get_project', 'Get details of a specific project',
     { project_id: z.string().describe('Project ID') },
-    async ({ project_id }) => wrap(() => service.getProject(project_id)));
+    async ({ project_id }) => wrap(() => service.getProject(project_id, agentId)));
 
   mcp.tool('create_project', 'Create a new project (admin)',
     { name: z.string().describe('Project name'), description: z.string().optional().describe('Project description') },
-    async ({ name, description }) => wrap(() => service.createProject(name, description)));
+    async ({ name, description }) => wrap(() => service.createProject(name, description, agentId)));
 
   mcp.tool('delete_project', 'Delete a project (admin)',
     { project_id: z.string().describe('Project ID') },
-    async ({ project_id }) => wrap(() => { service.deleteProject(project_id); return { deleted: true }; }));
+    async ({ project_id }) => wrap(() => { service.deleteProject(project_id, agentId); return { deleted: true }; }));
 
   // --- Tickets ---
   mcp.tool('list_tickets', 'List all tickets in a project',
     { project_id: z.string().describe('Project ID') },
-    async ({ project_id }) => wrap(() => service.getTicketsByProject(project_id)));
+    async ({ project_id }) => wrap(() => service.getTicketsByProject(project_id, agentId)));
 
   mcp.tool('get_ticket', 'Get details of a specific ticket including description',
     { project_id: z.string().describe('Project ID'), ticket_id: z.string().describe('Ticket ID') },
@@ -88,7 +88,7 @@ export function registerMcpTools(
 
   mcp.tool('delete_ticket', 'Delete a ticket',
     { project_id: z.string().describe('Project ID'), ticket_id: z.string().describe('Ticket ID') },
-    async ({ project_id, ticket_id }) => wrap(() => { service.deleteTicket(project_id, ticket_id); return { deleted: true }; }));
+    async ({ project_id, ticket_id }) => wrap(() => { service.deleteTicket(project_id, ticket_id, agentId); return { deleted: true }; }));
 
   // --- Comments ---
   mcp.tool('add_comment', 'Add a comment to a ticket', {
@@ -111,7 +111,7 @@ export function registerMcpTools(
 
   // --- Agents ---
   mcp.tool('list_agents', 'List all registered agents', {},
-    async () => ok(service.getAllAgents()));
+    async () => ok(service.getAllAgents(agentId)));
 
   mcp.tool('whoami', 'Show which agent identity this MCP server is using', {},
     async () => ok({ agentId, agentName }));

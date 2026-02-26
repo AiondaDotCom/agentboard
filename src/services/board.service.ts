@@ -27,6 +27,26 @@ export class BoardService {
   constructor(private db: AgentboardDB) {}
 
   // -------------------------------------------------------------------------
+  // Business audit logging (DORA/BaFin compliant)
+  // Logs WHO did WHAT on WHICH resource, at the business level.
+  // -------------------------------------------------------------------------
+
+  private audit(agentId: string | null, action: string, resource: string, details?: string): void {
+    const entry = this.db.logAudit(agentId, action, resource, 200, details ?? '');
+    pubsub.publish(EVENTS.AUDIT_ADDED, {
+      auditAdded: {
+        id: entry.id,
+        agentId: entry.agentId,
+        method: entry.method,
+        path: entry.path,
+        statusCode: entry.statusCode,
+        requestBody: entry.requestBody,
+        timestamp: entry.timestamp,
+      },
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // Settings / Admin key
   // -------------------------------------------------------------------------
 
@@ -44,13 +64,14 @@ export class BoardService {
   // Agents
   // -------------------------------------------------------------------------
 
-  createAgent(name: string): Agent {
+  createAgent(name: string, actorId?: string | null): Agent {
     if (typeof name !== 'string' || name.trim().length === 0) {
       throw new ValidationError('Missing or invalid "name" field');
     }
     try {
       const agent = this.db.createAgent(name.trim());
       pubsub.publish(EVENTS.AGENT_CHANGED, { agentChanged: agent });
+      this.audit(actorId ?? null, 'CREATE', `agent '${agent.name}'`);
       return agent;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '';
@@ -61,8 +82,10 @@ export class BoardService {
     }
   }
 
-  getAllAgents(): AgentPublic[] {
-    return this.db.getAllAgents();
+  getAllAgents(actorId?: string | null): AgentPublic[] {
+    const agents = this.db.getAllAgents();
+    if (actorId) this.audit(actorId, 'LIST', 'agents', `${agents.length} agents`);
+    return agents;
   }
 
   getAllAgentsWithKeys(): Agent[] {
@@ -90,30 +113,38 @@ export class BoardService {
   // Projects
   // -------------------------------------------------------------------------
 
-  createProject(name: string, description?: string): Project {
+  createProject(name: string, description?: string, actorId?: string | null): Project {
     if (typeof name !== 'string' || name.trim().length === 0) {
       throw new ValidationError('Missing or invalid "name" field');
     }
     const project = this.db.createProject(name.trim(), description ?? '');
     pubsub.publish(EVENTS.PROJECT_CHANGED, { projectChanged: project });
+    this.audit(actorId ?? null, 'CREATE', `project '${project.name}'`);
     return project;
   }
 
-  getAllProjects(): Project[] {
-    return this.db.getAllProjects();
+  getAllProjects(actorId?: string | null): Project[] {
+    const projects = this.db.getAllProjects();
+    if (actorId) this.audit(actorId, 'LIST', 'projects', `${projects.length} projects`);
+    return projects;
   }
 
-  getProject(id: string): Project {
+  getProject(id: string, actorId?: string | null): Project {
     const project = this.db.getProject(id);
     if (!project) throw new NotFoundError('Project not found');
+    if (actorId) {
+      this.audit(actorId, 'READ', `project '${project.name}'`);
+      this.logAndPublishActivity(actorId, id, null, 'project_read', `Read project '${project.name}'`);
+    }
     return project;
   }
 
-  deleteProject(id: string): void {
+  deleteProject(id: string, actorId?: string | null): void {
     const project = this.db.getProject(id);
     if (!project) throw new NotFoundError('Project not found');
     this.db.deleteProject(id);
     pubsub.publish(EVENTS.PROJECT_CHANGED, { projectChanged: project });
+    this.audit(actorId ?? null, 'DELETE', `project '${project.name}'`);
   }
 
   // -------------------------------------------------------------------------
@@ -158,19 +189,30 @@ export class BoardService {
       projectId: ticket.projectId,
     });
 
+    this.audit(agentId ?? null, 'CREATE', `ticket '${ticket.title}'`, `in project ${projectId}`);
     return ticket;
   }
 
   getTicket(projectId: string, ticketId: string, viewerAgentId?: string | null): Ticket {
     const ticket = this.db.getTicket(projectId, ticketId);
     if (!ticket) throw new NotFoundError('Ticket not found');
-    if (viewerAgentId) this.notifyTicketView(projectId, ticketId, viewerAgentId);
+    if (viewerAgentId) {
+      this.notifyTicketView(projectId, ticketId, viewerAgentId);
+      this.audit(viewerAgentId, 'READ', `ticket '${ticket.title}'`, `in project ${projectId}`);
+      this.logAndPublishActivity(viewerAgentId, projectId, ticketId, 'ticket_read', `Read ticket "${ticket.title}"`);
+    }
     return ticket;
   }
 
-  getTicketsByProject(projectId: string): Ticket[] {
+  getTicketsByProject(projectId: string, actorId?: string | null): Ticket[] {
     this.requireProject(projectId);
-    return this.db.getTicketsByProject(projectId);
+    const tickets = this.db.getTicketsByProject(projectId);
+    if (actorId) {
+      const project = this.db.getProject(projectId);
+      this.audit(actorId, 'LIST', `tickets in '${project?.name ?? projectId}'`, `${tickets.length} tickets`);
+      this.logAndPublishActivity(actorId, projectId, null, 'tickets_listed', `Listed ${tickets.length} tickets`);
+    }
+    return tickets;
   }
 
   updateTicket(
@@ -206,6 +248,7 @@ export class BoardService {
       projectId: ticket.projectId,
     });
 
+    this.audit(actorId ?? null, 'UPDATE', `ticket '${ticket.title}'`, JSON.stringify(cleanUpdates));
     return ticket;
   }
 
@@ -231,16 +274,18 @@ export class BoardService {
       projectId: ticket.projectId,
     });
 
+    this.audit(actorId ?? null, 'MOVE', `ticket '${ticket.title}'`, `→ ${column}`);
     return ticket;
   }
 
-  deleteTicket(projectId: string, ticketId: string): void {
+  deleteTicket(projectId: string, ticketId: string, actorId?: string | null): void {
     const ticket = this.requireTicket(projectId, ticketId);
     this.db.deleteTicket(projectId, ticketId);
     pubsub.publish(EVENTS.TICKET_DELETED, {
       ticketDeleted: ticket,
       projectId,
     });
+    this.audit(actorId ?? null, 'DELETE', `ticket '${ticket.title}'`);
   }
 
   closeTicket(projectId: string, ticketId: string): Ticket {
@@ -305,12 +350,17 @@ export class BoardService {
       projectId,
     });
 
+    this.audit(agentId, 'COMMENT', `ticket '${ticketId}'`, body.trim());
     return comment;
   }
 
   getCommentsByTicket(projectId: string, ticketId: string, viewerAgentId?: string | null): Comment[] {
     this.requireTicket(projectId, ticketId);
-    if (viewerAgentId) this.notifyTicketView(projectId, ticketId, viewerAgentId);
+    if (viewerAgentId) {
+      this.notifyTicketView(projectId, ticketId, viewerAgentId);
+      this.audit(viewerAgentId, 'READ', `comments on ticket '${ticketId}'`);
+      this.logAndPublishActivity(viewerAgentId, projectId, ticketId, 'comments_read', 'Read comments');
+    }
     return this.db.getCommentsByTicket(ticketId);
   }
 
@@ -320,7 +370,11 @@ export class BoardService {
 
   getRevisionsByTicket(projectId: string, ticketId: string, viewerAgentId?: string | null): TicketRevision[] {
     this.requireTicket(projectId, ticketId);
-    if (viewerAgentId) this.notifyTicketView(projectId, ticketId, viewerAgentId);
+    if (viewerAgentId) {
+      this.notifyTicketView(projectId, ticketId, viewerAgentId);
+      this.audit(viewerAgentId, 'READ', `history of ticket '${ticketId}'`);
+      this.logAndPublishActivity(viewerAgentId, projectId, ticketId, 'history_read', 'Read ticket history');
+    }
     return this.db.getRevisionsByTicket(ticketId);
   }
 
@@ -343,6 +397,21 @@ export class BoardService {
 
   getAuditEntriesByAgent(agentId: string, limit?: number): AuditEntry[] {
     return this.db.getAuditEntriesByAgent(agentId, limit);
+  }
+
+  // -------------------------------------------------------------------------
+  // Activity helper: log + publish in one call
+  // -------------------------------------------------------------------------
+
+  private logAndPublishActivity(
+    agentId: string | null,
+    projectId: string,
+    ticketId: string | null,
+    action: import('../types.js').ActivityAction,
+    details: string,
+  ): void {
+    const activity = this.db.logActivity(agentId, ticketId, action, details, projectId);
+    pubsub.publish(EVENTS.ACTIVITY_ADDED, { activityAdded: activity, projectId });
   }
 
   // -------------------------------------------------------------------------

@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS comments (
 CREATE TABLE IF NOT EXISTS activity_log (
   id TEXT PRIMARY KEY,
   agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
-  ticket_id TEXT NOT NULL,
+  ticket_id TEXT,
+  project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
   action TEXT NOT NULL,
   details TEXT NOT NULL DEFAULT '',
   timestamp TEXT NOT NULL DEFAULT (datetime('now'))

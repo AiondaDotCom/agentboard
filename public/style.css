@@ -766,12 +766,33 @@ select:focus {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  animation: fadeIn 0.3s ease;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateX(-4px); }
-  to { opacity: 1; transform: translateX(0); }
+.activity-item-new {
+  animation: activitySlideIn 0.5s ease-out;
+  background: rgba(53, 184, 201, 0.08);
+}
+
+@keyframes activitySlideIn {
+  0% {
+    opacity: 0;
+    max-height: 0;
+    padding: 0;
+    transform: translateY(-20px);
+    background: rgba(53, 184, 201, 0.25);
+  }
+  40% {
+    opacity: 1;
+    max-height: 50px;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 1;
+    max-height: 50px;
+    padding: 7px 0;
+    transform: translateY(0);
+    background: rgba(53, 184, 201, 0.08);
+  }
 }
 
 .activity-text {
@@ -831,14 +852,41 @@ select:focus {
   font-size: 11px;
 }
 
+/* HTTP methods */
 .audit-method.GET { color: var(--green); }
 .audit-method.POST { color: var(--accent); }
 .audit-method.PATCH { color: var(--orange); }
 .audit-method.DELETE { color: var(--red); }
+/* Business actions */
+.audit-method.LIST { color: var(--green); }
+.audit-method.READ { color: var(--accent); }
+.audit-method.CREATE { color: #6dd5ed; }
+.audit-method.UPDATE { color: var(--orange); }
+.audit-method.MOVE { color: #c084fc; }
+.audit-method.COMMENT { color: #f9a825; }
 
+.audit-agent { color: var(--accent); font-weight: 600; font-size: 11px; }
 .audit-status { color: var(--text-dim); }
 .audit-path { color: var(--text); word-break: break-all; font-size: 11px; opacity: 0.8; }
 .audit-time { color: var(--text-dim); text-align: right; font-size: 11px; opacity: 0.6; }
+
+.audit-item-new {
+  animation: auditSlideIn 0.4s ease-out;
+  background: rgba(53, 184, 201, 0.06);
+}
+
+@keyframes auditSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+    background: rgba(53, 184, 201, 0.15);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    background: rgba(53, 184, 201, 0.06);
+  }
+}
 
 /* ---- Ticket Detail Modal ---- */
 .modal-overlay {

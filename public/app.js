@@ -343,6 +343,22 @@ function createTicketCard(ticket) {
   return card;
 }
 
+function createActivityItem(a) {
+  const agent = a.agentId
+    ? (a.agent ? a.agent : (agents[a.agentId] || { name: 'unknown' }))
+    : { name: 'Human' };
+  const item = document.createElement('div');
+  item.className = 'activity-item';
+  item.innerHTML = `
+    <span class="activity-text">
+      <span class="agent-name">${escapeHtml(agent.name)}</span>
+      ${escapeHtml(a.details)}
+    </span>
+    <span class="activity-time">${formatTime(a.timestamp)}</span>
+  `;
+  return item;
+}
+
 function renderActivity() {
   const list = document.getElementById('activity-list');
   const count = document.getElementById('activity-count');
@@ -350,35 +366,66 @@ function renderActivity() {
   list.innerHTML = '';
 
   activities.slice(0, 50).forEach(a => {
-    const agent = a.agentId ? (agents[a.agentId] || { name: 'unknown' }) : { name: 'Human' };
-    const item = document.createElement('div');
-    item.className = 'activity-item';
-    item.innerHTML = `
-      <span class="activity-text">
-        <span class="agent-name">${escapeHtml(agent.name)}</span>
-        ${escapeHtml(a.details)}
-      </span>
-      <span class="activity-time">${formatTime(a.timestamp)}</span>
-    `;
-    list.appendChild(item);
+    list.appendChild(createActivityItem(a));
   });
 }
 
-function renderAudit(entries) {
-  const list = document.getElementById('audit-list');
-  list.innerHTML = '';
-  entries.forEach(e => {
-    const agent = e.agentId ? (agents[e.agentId] || { name: '???' }) : null;
-    const item = document.createElement('div');
-    item.className = 'audit-item';
+function prependActivityEntry(a) {
+  const list = document.getElementById('activity-list');
+  if (!list) return;
+  const item = createActivityItem(a);
+  item.classList.add('activity-item-new');
+  item.addEventListener('animationend', () => item.classList.remove('activity-item-new'), { once: true });
+  list.insertBefore(item, list.firstChild);
+  // Update count
+  const count = document.getElementById('activity-count');
+  const n = list.children.length;
+  count.textContent = `${n} events`;
+  // Keep max 50 entries
+  while (list.children.length > 50) list.removeChild(list.lastChild);
+}
+
+function createAuditItem(e) {
+  const agent = e.agentId ? (agents[e.agentId] || { name: '???' }) : null;
+  const item = document.createElement('div');
+  item.className = 'audit-item';
+  // Business-level actions (from service layer) vs HTTP-level (from middleware)
+  const businessActions = ['LIST', 'READ', 'CREATE', 'UPDATE', 'DELETE', 'MOVE', 'COMMENT'];
+  const isBusiness = businessActions.includes(e.method);
+  if (isBusiness) {
+    const details = e.requestBody ? ` (${escapeHtml(e.requestBody)})` : '';
+    item.innerHTML = `
+      <span class="audit-method ${e.method}">${e.method}</span>
+      <span class="audit-agent">${agent ? escapeHtml(agent.name) : 'system'}</span>
+      <span class="audit-path">${escapeHtml(e.path)}${details}</span>
+      <span class="audit-time">${formatTime(e.timestamp)}</span>
+    `;
+  } else {
     item.innerHTML = `
       <span class="audit-method ${e.method}">${e.method}</span>
       <span class="audit-status">${e.statusCode}</span>
       <span class="audit-path">${escapeHtml(e.path)}${agent ? ` (${escapeHtml(agent.name)})` : ''}</span>
       <span class="audit-time">${formatTime(e.timestamp)}</span>
     `;
-    list.appendChild(item);
-  });
+  }
+  return item;
+}
+
+function renderAudit(entries) {
+  const list = document.getElementById('audit-list');
+  list.innerHTML = '';
+  entries.forEach(e => list.appendChild(createAuditItem(e)));
+}
+
+function prependAuditEntry(e) {
+  const list = document.getElementById('audit-list');
+  if (!list || list.classList.contains('hidden')) return;
+  const item = createAuditItem(e);
+  item.classList.add('audit-item-new');
+  item.addEventListener('animationend', () => item.classList.remove('audit-item-new'), { once: true });
+  list.insertBefore(item, list.firstChild);
+  // Keep max 50 entries
+  while (list.children.length > 50) list.removeChild(list.lastChild);
 }
 
 // ---------------------------------------------------------------------------
@@ -668,6 +715,7 @@ function connectWebSocket(projectId) {
       // Always subscribe to global events
       subscribeGlobal(socket, '6', 'agentChanged', 'id name createdAt');
       subscribeGlobal(socket, '7', 'projectChanged', 'id name description createdAt');
+      subscribeGlobal(socket, '9', 'auditAdded', 'id agentId method path statusCode requestBody timestamp');
       // Project-specific subscriptions only when viewing a project
       if (projectId) {
         subscribe(socket, '1', 'ticketCreated', projectId);
@@ -744,20 +792,24 @@ function handleSubscriptionEvent(subId, data) {
     return;
   }
 
+  // Audit event → prepend to audit log in realtime
+  if (subId === '9') {
+    if (data.auditAdded) prependAuditEntry(data.auditAdded);
+    return;
+  }
+
   if (!currentProjectId) return;
 
-  // Any ticket event (create, update, move, delete) → reload board, activity, agents, audit
+  // Any ticket event (create, update, move, delete) → reload board, activity, agents
   if (subId === '1' || subId === '2' || subId === '3' || subId === '5') {
     loadBoard(currentProjectId);
     loadActivity(currentProjectId);
     loadAgents();
-    loadAudit();
   }
 
-  // Activity event → also reload board (comments change activity feed)
+  // Activity event → prepend with animation (no full reload)
   if (subId === '4') {
-    loadActivity(currentProjectId);
-    loadAudit();
+    if (data.activityAdded) prependActivityEntry(data.activityAdded);
   }
 
   // Ticket viewed → show agent viewing indicator

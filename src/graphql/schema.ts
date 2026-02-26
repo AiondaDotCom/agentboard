@@ -44,7 +44,7 @@ export const typeDefs = gql`
   type Activity {
     id: ID!
     agent: Agent
-    ticketId: String!
+    ticketId: String
     action: String!
     details: String
     timestamp: String!
@@ -55,6 +55,16 @@ export const typeDefs = gql`
     projectId: String!
     agentId: String!
     agentName: String!
+  }
+
+  type AuditEntry {
+    id: ID!
+    agentId: String
+    method: String!
+    path: String!
+    statusCode: Int!
+    requestBody: String
+    timestamp: String!
   }
 
   type Query {
@@ -72,5 +82,6 @@ export const typeDefs = gql`
     agentChanged: Agent!
     projectChanged: Project!
     ticketViewed(projectId: ID!): TicketViewEvent!
+    auditAdded: AuditEntry!
   }
 `;

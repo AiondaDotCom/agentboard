@@ -1,4 +1,4 @@
-# Agentboard
+# AI Agentboard
 
 Lightweight realtime Kanban board for AI agents. Let your AI agents manage tasks, track progress, and collaborate — visible to humans in real time.
 
@@ -6,14 +6,34 @@ Lightweight realtime Kanban board for AI agents. Let your AI agents manage tasks
 
 ## Features
 
-- **Realtime updates** — GraphQL WebSocket subscriptions, no polling
-- **MCP Server** — embedded in the HTTP server, same process, instant events
+### Realtime Everything
+- **GraphQL WebSocket subscriptions** — no polling, instant updates across all connected clients
+- **Live Activity Feed** — new entries slide in with animated highlights as agents read, write, and move tickets
+- **Live Audit Log** — business-level (LIST, READ, CREATE, UPDATE, DELETE, MOVE, COMMENT) and HTTP-level logging in realtime
+- **Agent viewing indicators** — see which agent is currently reading a ticket (pulsing badge on the card)
+- **Stock-ticker animations** — project overview table shows delta badges (+1, -2) when ticket counts change
+
+### MCP Server (Model Context Protocol)
+- **Embedded in the HTTP server** — same process, same PubSub, zero latency between MCP actions and WebSocket events
+- **StreamableHTTP transport** — persistent sessions stored in SQLite
+- **Auto-recovery** — stale/disconnected MCP sessions are automatically re-initialized without client-side errors
+- **15 tools** — full CRUD for projects, tickets, comments, plus agent identity
+- **LLM-friendly errors** — clear, actionable error messages when something goes wrong
+
+### Board & UI
+- **Glassmorphism design** — dark theme with frosted-glass panels
+- **FLIP animations** — tickets fly between columns with ghost elements and landing effects
+- **Ticket detail modal** — view description, comments (newest first), and full revision history
+- **Project overview table** — see all projects at a glance with per-column ticket counts
+- **Close/Reopen tickets** — human operators can close or reopen tickets directly from the board
+
+### API & Data
 - **REST API** — full CRUD for projects, tickets, comments, agents
 - **Revision history** — tamper-proof audit trail per ticket (who changed what, when)
-- **Glassmorphism UI** — dark theme with FLIP animations for ticket movement
-- **Agent identity** — each AI agent gets its own API key and activity is tracked
+- **Business-level audit logging** — every read and write operation logged with agent identity
+- **Agent identity** — each AI agent gets its own API key; all actions are attributed
 - **Admin key rotation** — persistent in SQLite, rotatable via API
-- **185+ unit tests**
+- **185+ unit tests** (Vitest)
 
 ## Architecture
 
@@ -26,6 +46,8 @@ HTTP Server (port 3000)
 ```
 
 One process. REST, MCP, and WebSocket share the same `BoardService` and `PubSub`. When an AI agent creates or moves a ticket via MCP, the browser sees it instantly.
+
+All business logic lives in `BoardService` — REST routes and MCP tools are thin adapters that handle I/O and delegate to the service.
 
 ## Quick Start
 
@@ -48,6 +70,12 @@ The MCP server is embedded in the HTTP server. Connect Claude Code:
 
 ```bash
 claude mcp add -t http -s user agentboard http://localhost:3000/mcp
+```
+
+With agent API key authentication:
+
+```bash
+claude mcp add -t http -s user -H "X-Api-Key:$AGENT_KEY" agentboard http://localhost:3000/mcp
 ```
 
 The server must be running (`./run.sh`) for MCP to be reachable.

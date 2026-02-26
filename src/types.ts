@@ -91,12 +91,17 @@ export type ActivityAction =
   | 'ticket_updated'
   | 'ticket_moved'
   | 'ticket_deleted'
-  | 'comment_added';
+  | 'comment_added'
+  | 'project_read'
+  | 'tickets_listed'
+  | 'ticket_read'
+  | 'comments_read'
+  | 'history_read';
 
 export interface Activity {
   id: string;
   agentId: string | null;
-  ticketId: string;
+  ticketId: string | null;
   action: ActivityAction;
   details: string;
   timestamp: string;
