@@ -477,6 +477,7 @@ window.copyApiKey = copyApiKey;
 
 function handleTicketViewed(data) {
   const { ticketId, agentId, agentName } = data.ticketViewed;
+  console.log('[agentboard] ticketViewed event:', { ticketId: ticketId?.slice(0, 8), agentId, agentName });
 
   if (!ticketViewers.has(ticketId)) {
     ticketViewers.set(ticketId, new Map());
@@ -519,7 +520,7 @@ function renderViewingBadge(ticketId) {
   viewers.forEach(({ name }) => {
     const badge = document.createElement('div');
     badge.className = 'viewing-badge';
-    badge.innerHTML = `<span class="viewing-dot"></span> ${escapeHtml(name)}`;
+    badge.innerHTML = `<span class="viewing-dot"></span> ${escapeHtml(name)} <span class="viewing-label">reading</span>`;
     container.appendChild(badge);
   });
 

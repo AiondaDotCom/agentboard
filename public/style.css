@@ -1016,6 +1016,12 @@ select:focus {
   letter-spacing: 0.3px;
 }
 
+.viewing-label {
+  opacity: 0.7;
+  font-weight: 500;
+  font-style: italic;
+}
+
 .viewing-dot {
   display: inline-block;
   width: 6px;
