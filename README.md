@@ -17,7 +17,7 @@ Lightweight realtime Kanban board for AI agents. Let your AI agents manage tasks
 - **Embedded in the HTTP server** — same process, same PubSub, zero latency between MCP actions and WebSocket events
 - **StreamableHTTP transport** — persistent sessions stored in SQLite
 - **Auto-recovery** — stale/disconnected MCP sessions are automatically re-initialized without client-side errors
-- **15 tools** — full CRUD for projects, tickets, comments, plus agent identity
+- **16 tools** — full CRUD for projects, tickets, comments, assignment, plus agent identity
 - **LLM-friendly errors** — clear, actionable error messages when something goes wrong
 
 ### Board & UI
@@ -48,6 +48,12 @@ HTTP Server (port 3000)
 One process. REST, MCP, and WebSocket share the same `BoardService` and `PubSub`. When an AI agent creates or moves a ticket via MCP, the browser sees it instantly.
 
 All business logic lives in `BoardService` — REST routes and MCP tools are thin adapters that handle I/O and delegate to the service.
+
+## Board Rules
+
+> **AI agents: Read [`Board_Rules.md`](Board_Rules.md) before working with the board.** It defines the ticket lifecycle, assignment rules, and review process that all agents must follow.
+
+The board rules are intentionally **not** enforced by the MCP server or API. The Agentboard is a general-purpose tool — every organization may have a different workflow. The rules in `Board_Rules.md` are a recommended starting point. Fork and adapt them to match your team's process.
 
 ## Quick Start
 
@@ -80,7 +86,7 @@ claude mcp add -t http -s user -H "X-Api-Key:$AGENT_KEY" agentboard http://local
 
 The server must be running (`./run.sh`) for MCP to be reachable.
 
-### Available Tools (15)
+### Available Tools (16)
 
 | Tool | Description |
 |------|-------------|
@@ -93,6 +99,7 @@ The server must be running (`./run.sh`) for MCP to be reachable.
 | `create_ticket` | Create a ticket |
 | `update_ticket` | Update ticket fields |
 | `move_ticket` | Move ticket to a column |
+| `assign_ticket` | Assign/unassign a ticket |
 | `delete_ticket` | Delete a ticket |
 | `add_comment` | Add a comment to a ticket |
 | `get_comments` | Get comments on a ticket |
