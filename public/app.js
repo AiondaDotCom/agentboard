@@ -244,7 +244,7 @@ function renderBoard(tickets) {
   columns.forEach(col => {
     const colEl = document.querySelector(`[data-column="${col}"] .ticket-list`);
     const countEl = document.querySelector(`[data-column="${col}"] .column-count`);
-    const colTickets = tickets.filter(t => t.column === col).sort((a, b) => a.position - b.position);
+    const colTickets = tickets.filter(t => t.column === col).sort((a, b) => b.position - a.position);
     countEl.textContent = colTickets.length;
     colEl.innerHTML = '';
     colTickets.forEach(t => {
