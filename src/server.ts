@@ -184,7 +184,7 @@ app.post('/mcp', async (req, res) => {
         return;
       }
       await mcpSessions[sessionId].transport.handleRequest(req, res, req.body);
-    } else if (!sessionId && isInitializeRequest(req.body)) {
+    } else if (isInitializeRequest(req.body)) {
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (sid: string) => {
@@ -201,6 +201,13 @@ app.post('/mcp', async (req, res) => {
       registerMcpTools(mcp, service, agent.id, agent.name);
       await mcp.connect(transport as unknown as Parameters<typeof mcp.connect>[0]);
       await transport.handleRequest(req, res, req.body);
+    } else if (sessionId && !mcpSessions[sessionId]) {
+      // Unknown session ID → 404 tells the client to re-initialize
+      res.status(404).json({
+        jsonrpc: '2.0',
+        error: { code: -32000, message: 'Session not found. Please re-initialize.' },
+        id: null,
+      });
     } else {
       res.status(400).json({
         jsonrpc: '2.0',
