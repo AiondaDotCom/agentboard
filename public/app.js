@@ -9,6 +9,12 @@ let agents = {};
 let activities = [];
 
 // ---------------------------------------------------------------------------
+// Agent viewing tracker – ticketId -> Map<agentId, {name, timer}>
+// ---------------------------------------------------------------------------
+const ticketViewers = new Map();
+const VIEWING_DURATION = 60000; // 60 seconds
+
+// ---------------------------------------------------------------------------
 // API helpers
 // ---------------------------------------------------------------------------
 
@@ -209,6 +215,9 @@ function renderBoard(tickets) {
 
   // 4. Save state for next render
   prevTicketState = snapshotTicketPositions();
+
+  // 5. Reapply viewing badges (board re-render replaces all card DOM)
+  reapplyAllViewingBadges();
 }
 
 function createTicketCard(ticket) {
@@ -463,6 +472,74 @@ window.closeAgentsModal = closeAgentsModal;
 window.copyApiKey = copyApiKey;
 
 // ---------------------------------------------------------------------------
+// Agent viewing indicator (shows which agents are reading a ticket)
+// ---------------------------------------------------------------------------
+
+function handleTicketViewed(data) {
+  const { ticketId, agentId, agentName } = data.ticketViewed;
+
+  if (!ticketViewers.has(ticketId)) {
+    ticketViewers.set(ticketId, new Map());
+  }
+  const viewers = ticketViewers.get(ticketId);
+
+  // Clear existing timer for this agent on this ticket
+  if (viewers.has(agentId)) {
+    clearTimeout(viewers.get(agentId).timer);
+  }
+
+  // Auto-remove after VIEWING_DURATION
+  const timer = setTimeout(() => {
+    viewers.delete(agentId);
+    if (viewers.size === 0) ticketViewers.delete(ticketId);
+    renderViewingBadge(ticketId);
+  }, VIEWING_DURATION);
+
+  viewers.set(agentId, { name: agentName, timer });
+  renderViewingBadge(ticketId);
+}
+
+function renderViewingBadge(ticketId) {
+  const card = document.querySelector(`.ticket-card[data-ticket-id="${ticketId}"]`);
+  if (!card) return;
+
+  // Remove existing badges
+  const existing = card.querySelector('.viewing-badges');
+  if (existing) existing.remove();
+  card.classList.remove('being-viewed');
+
+  const viewers = ticketViewers.get(ticketId);
+  if (!viewers || viewers.size === 0) return;
+
+  card.classList.add('being-viewed');
+
+  const container = document.createElement('div');
+  container.className = 'viewing-badges';
+
+  viewers.forEach(({ name }) => {
+    const badge = document.createElement('div');
+    badge.className = 'viewing-badge';
+    badge.innerHTML = `<span class="viewing-dot"></span> ${escapeHtml(name)}`;
+    container.appendChild(badge);
+  });
+
+  card.insertBefore(container, card.firstChild);
+}
+
+function reapplyAllViewingBadges() {
+  ticketViewers.forEach((_, ticketId) => {
+    renderViewingBadge(ticketId);
+  });
+}
+
+function clearAllViewingTimers() {
+  ticketViewers.forEach(viewers => {
+    viewers.forEach(({ timer }) => clearTimeout(timer));
+  });
+  ticketViewers.clear();
+}
+
+// ---------------------------------------------------------------------------
 // GraphQL WebSocket subscriptions (realtime)
 // ---------------------------------------------------------------------------
 
@@ -493,6 +570,10 @@ function connectWebSocket(projectId) {
       subscribe(ws, '2', 'ticketUpdated', projectId);
       subscribe(ws, '3', 'ticketMoved', projectId);
       subscribe(ws, '4', 'activityAdded', projectId);
+      subscribe(ws, '5', 'ticketDeleted', projectId);
+      subscribeGlobal(ws, '6', 'agentChanged', 'id name createdAt');
+      subscribeGlobal(ws, '7', 'projectChanged', 'id name description createdAt');
+      subscribe(ws, '8', 'ticketViewed', projectId);
     }
 
     if (msg.type === 'next') {
@@ -522,9 +603,14 @@ function connectWebSocket(projectId) {
 }
 
 function subscribe(socket, id, eventName, projectId) {
-  const query = eventName === 'activityAdded'
-    ? `subscription { ${eventName}(projectId: "${projectId}") { id agent { id name } ticketId action details timestamp } }`
-    : `subscription { ${eventName}(projectId: "${projectId}") { id projectId title description column position agentId agent { id name } createdAt updatedAt } }`;
+  let query;
+  if (eventName === 'activityAdded') {
+    query = `subscription { ${eventName}(projectId: "${projectId}") { id agent { id name } ticketId action details timestamp } }`;
+  } else if (eventName === 'ticketViewed') {
+    query = `subscription { ${eventName}(projectId: "${projectId}") { ticketId projectId agentId agentName } }`;
+  } else {
+    query = `subscription { ${eventName}(projectId: "${projectId}") { id projectId title description column position agentId agent { id name } createdAt updatedAt } }`;
+  }
 
   socket.send(JSON.stringify({
     id,
@@ -533,11 +619,33 @@ function subscribe(socket, id, eventName, projectId) {
   }));
 }
 
-function handleSubscriptionEvent(subId, data) {
-  if (!currentProjectId || !data) return;
+function subscribeGlobal(socket, id, eventName, fields) {
+  socket.send(JSON.stringify({
+    id,
+    type: 'subscribe',
+    payload: { query: `subscription { ${eventName} { ${fields} } }` },
+  }));
+}
 
-  // Any ticket event → reload board, activity, agents, audit
-  if (subId === '1' || subId === '2' || subId === '3') {
+function handleSubscriptionEvent(subId, data) {
+  if (!data) return;
+
+  // Agent changed → reload agents (global, no project needed)
+  if (subId === '6') {
+    loadAgents();
+    return;
+  }
+
+  // Project changed → reload project list (global, no project needed)
+  if (subId === '7') {
+    loadProjects();
+    return;
+  }
+
+  if (!currentProjectId) return;
+
+  // Any ticket event (create, update, move, delete) → reload board, activity, agents, audit
+  if (subId === '1' || subId === '2' || subId === '3' || subId === '5') {
     loadBoard(currentProjectId);
     loadActivity(currentProjectId);
     loadAgents();
@@ -548,6 +656,11 @@ function handleSubscriptionEvent(subId, data) {
   if (subId === '4') {
     loadActivity(currentProjectId);
     loadAudit();
+  }
+
+  // Ticket viewed → show agent viewing indicator
+  if (subId === '8') {
+    handleTicketViewed(data);
   }
 }
 
@@ -614,6 +727,7 @@ async function selectProject(projectId) {
     activityFeed.classList.add('hidden');
     auditPanel.classList.add('hidden');
     if (ws) { ws.close(); ws = null; }
+    clearAllViewingTimers();
   }
 }
 

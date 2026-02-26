@@ -51,9 +51,25 @@ export function createResolvers(db: AgentboardDB): Record<string, unknown> {
         subscribe: (_: unknown, args: SubscriptionArgs): AsyncIterableIterator<Record<string, unknown>> =>
           pubsub.asyncIterableIterator(EVENTS.TICKET_MOVED, (payload) => (payload as { projectId: string }).projectId === args.projectId),
       },
+      ticketDeleted: {
+        subscribe: (_: unknown, args: SubscriptionArgs): AsyncIterableIterator<Record<string, unknown>> =>
+          pubsub.asyncIterableIterator(EVENTS.TICKET_DELETED, (payload) => (payload as { projectId: string }).projectId === args.projectId),
+      },
       activityAdded: {
         subscribe: (_: unknown, args: SubscriptionArgs): AsyncIterableIterator<Record<string, unknown>> =>
           pubsub.asyncIterableIterator(EVENTS.ACTIVITY_ADDED, (payload) => (payload as { projectId: string }).projectId === args.projectId),
+      },
+      agentChanged: {
+        subscribe: (): AsyncIterableIterator<Record<string, unknown>> =>
+          pubsub.asyncIterableIterator(EVENTS.AGENT_CHANGED),
+      },
+      projectChanged: {
+        subscribe: (): AsyncIterableIterator<Record<string, unknown>> =>
+          pubsub.asyncIterableIterator(EVENTS.PROJECT_CHANGED),
+      },
+      ticketViewed: {
+        subscribe: (_: unknown, args: SubscriptionArgs): AsyncIterableIterator<Record<string, unknown>> =>
+          pubsub.asyncIterableIterator(EVENTS.TICKET_VIEWED, (payload) => (payload as { projectId: string }).projectId === args.projectId),
       },
     },
   };

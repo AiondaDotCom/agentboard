@@ -976,6 +976,60 @@ select:focus {
   }
 }
 
+/* Agent viewing indicator */
+.ticket-card.being-viewed {
+  border-color: rgba(168, 85, 247, 0.5);
+  animation: viewingPulse 2.5s ease-in-out infinite;
+}
+
+.ticket-card.being-viewed:hover {
+  border-color: rgba(168, 85, 247, 0.7);
+}
+
+@keyframes viewingPulse {
+  0%, 100% {
+    box-shadow: 0 0 16px rgba(168, 85, 247, 0.12), 0 0 4px rgba(168, 85, 247, 0.06);
+  }
+  50% {
+    box-shadow: 0 0 28px rgba(168, 85, 247, 0.25), 0 0 60px rgba(168, 85, 247, 0.08);
+  }
+}
+
+.viewing-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.viewing-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(168, 85, 247, 0.12);
+  border: 1px solid rgba(168, 85, 247, 0.25);
+  border-radius: 12px;
+  padding: 2px 9px 2px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--purple);
+  letter-spacing: 0.3px;
+}
+
+.viewing-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--purple);
+  animation: dotPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes dotPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.7); }
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }

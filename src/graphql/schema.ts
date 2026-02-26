@@ -50,6 +50,13 @@ export const typeDefs = gql`
     timestamp: String!
   }
 
+  type TicketViewEvent {
+    ticketId: ID!
+    projectId: String!
+    agentId: String!
+    agentName: String!
+  }
+
   type Query {
     projects: [Project!]!
     project(id: ID!): Project
@@ -60,6 +67,10 @@ export const typeDefs = gql`
     ticketCreated(projectId: ID!): Ticket!
     ticketUpdated(projectId: ID!): Ticket!
     ticketMoved(projectId: ID!): Ticket!
+    ticketDeleted(projectId: ID!): Ticket!
     activityAdded(projectId: ID!): Activity!
+    agentChanged: Agent!
+    projectChanged: Project!
+    ticketViewed(projectId: ID!): TicketViewEvent!
   }
 `;

@@ -49,7 +49,9 @@ export class BoardService {
       throw new ValidationError('Missing or invalid "name" field');
     }
     try {
-      return this.db.createAgent(name.trim());
+      const agent = this.db.createAgent(name.trim());
+      pubsub.publish(EVENTS.AGENT_CHANGED, { agentChanged: agent });
+      return agent;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '';
       if (message.includes('UNIQUE')) {
@@ -81,6 +83,7 @@ export class BoardService {
     const agent = this.db.getAgentById(id);
     if (!agent) throw new NotFoundError('Agent not found');
     this.db.deleteAgent(id);
+    pubsub.publish(EVENTS.AGENT_CHANGED, { agentChanged: agent });
   }
 
   // -------------------------------------------------------------------------
@@ -91,7 +94,9 @@ export class BoardService {
     if (typeof name !== 'string' || name.trim().length === 0) {
       throw new ValidationError('Missing or invalid "name" field');
     }
-    return this.db.createProject(name.trim(), description ?? '');
+    const project = this.db.createProject(name.trim(), description ?? '');
+    pubsub.publish(EVENTS.PROJECT_CHANGED, { projectChanged: project });
+    return project;
   }
 
   getAllProjects(): Project[] {
@@ -108,6 +113,7 @@ export class BoardService {
     const project = this.db.getProject(id);
     if (!project) throw new NotFoundError('Project not found');
     this.db.deleteProject(id);
+    pubsub.publish(EVENTS.PROJECT_CHANGED, { projectChanged: project });
   }
 
   // -------------------------------------------------------------------------
@@ -228,8 +234,12 @@ export class BoardService {
   }
 
   deleteTicket(projectId: string, ticketId: string): void {
-    this.requireTicket(projectId, ticketId);
+    const ticket = this.requireTicket(projectId, ticketId);
     this.db.deleteTicket(projectId, ticketId);
+    pubsub.publish(EVENTS.TICKET_DELETED, {
+      ticketDeleted: ticket,
+      projectId,
+    });
   }
 
   closeTicket(projectId: string, ticketId: string): Ticket {
@@ -330,6 +340,19 @@ export class BoardService {
 
   getAuditEntriesByAgent(agentId: string, limit?: number): AuditEntry[] {
     return this.db.getAuditEntriesByAgent(agentId, limit);
+  }
+
+  // -------------------------------------------------------------------------
+  // View notifications (fire-and-forget, for frontend "agent is reading" indicator)
+  // -------------------------------------------------------------------------
+
+  notifyTicketView(projectId: string, ticketId: string, agentId: string): void {
+    const agent = this.db.getAgentById(agentId);
+    if (!agent) return;
+    pubsub.publish(EVENTS.TICKET_VIEWED, {
+      ticketViewed: { ticketId, projectId, agentId, agentName: agent.name },
+      projectId,
+    });
   }
 
   // -------------------------------------------------------------------------
