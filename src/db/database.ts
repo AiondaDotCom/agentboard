@@ -636,4 +636,40 @@ export class AgentboardDB {
   deleteSession(token: string): void {
     this.db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
   }
+
+  // ---------------------------------------------------------------------------
+  // MCP Sessions (persistent session_id → agent_id mapping)
+  // ---------------------------------------------------------------------------
+
+  createMcpSession(sessionId: string, agentId: string): void {
+    this.db
+      .prepare('INSERT OR REPLACE INTO mcp_sessions (session_id, agent_id) VALUES (?, ?)')
+      .run(sessionId, agentId);
+  }
+
+  getMcpSessionAgentId(sessionId: string): string | undefined {
+    const row = this.db
+      .prepare('SELECT agent_id FROM mcp_sessions WHERE session_id = ?')
+      .get(sessionId) as { agent_id: string } | undefined;
+    return row?.agent_id;
+  }
+
+  touchMcpSession(sessionId: string): void {
+    this.db
+      .prepare("UPDATE mcp_sessions SET last_used_at = datetime('now') WHERE session_id = ?")
+      .run(sessionId);
+  }
+
+  deleteMcpSession(sessionId: string): void {
+    this.db
+      .prepare('DELETE FROM mcp_sessions WHERE session_id = ?')
+      .run(sessionId);
+  }
+
+  pruneOldMcpSessions(maxAgeDays: number = 30): number {
+    const result = this.db
+      .prepare("DELETE FROM mcp_sessions WHERE last_used_at < datetime('now', ?)")
+      .run(`-${maxAgeDays} days`);
+    return result.changes;
+  }
 }

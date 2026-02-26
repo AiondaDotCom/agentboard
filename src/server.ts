@@ -49,6 +49,9 @@ const DB_PATH = process.env['DB_PATH'] || 'agentboard.db';
 const db = new AgentboardDB(DB_PATH);
 const service = new BoardService(db);
 
+// Clean up MCP sessions older than 30 days
+db.pruneOldMcpSessions(30);
+
 // Admin key: stored in SQLite (generated once, persisted forever).
 const envKey = process.env['ADMIN_API_KEY'];
 if (envKey) {
@@ -165,63 +168,109 @@ function authenticateMcpRequest(
   return agent;
 }
 
+/** Helper: create a new MCP transport + server for an agent. */
+async function createMcpTransport(
+  agentId: string,
+  agentName: string,
+): Promise<StreamableHTTPServerTransport> {
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: () => randomUUID(),
+    onsessioninitialized: (sid: string) => {
+      mcpSessions[sid] = { transport, agentId };
+      db.createMcpSession(sid, agentId);
+    },
+  });
+
+  transport.onclose = () => {
+    const sid = transport.sessionId;
+    if (sid) {
+      delete mcpSessions[sid];
+      db.deleteMcpSession(sid);
+    }
+  };
+
+  const mcp = new McpServer({ name: 'agentboard', version: '1.0.0' });
+  registerMcpTools(mcp, service, agentId, agentName);
+  await mcp.connect(transport as unknown as Parameters<typeof mcp.connect>[0]);
+  return transport;
+}
+
+/** Helper: build an LLM-friendly JSON-RPC error response. */
+function mcpError(
+  res: express.Response,
+  status: number,
+  code: number,
+  message: string,
+  data: Record<string, string>,
+  reqId?: unknown,
+): void {
+  res.status(status).json({
+    jsonrpc: '2.0',
+    error: { code, message, data },
+    id: reqId ?? null,
+  });
+}
+
 // POST /mcp – JSON-RPC messages + initialization
 app.post('/mcp', async (req, res) => {
   const agent = authenticateMcpRequest(req, res);
   if (!agent) return;
 
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
+  const reqId = req.body?.id;
 
   try {
+    // Case 1: Active in-memory session
     if (sessionId && mcpSessions[sessionId]) {
-      // Verify same agent owns this session
       if (mcpSessions[sessionId].agentId !== agent.id) {
-        res.status(403).json({
-          jsonrpc: '2.0',
-          error: { code: -32002, message: 'Session belongs to a different agent' },
-          id: null,
-        });
+        mcpError(res, 403, -32002, 'Session belongs to a different agent. Use the X-Api-Key that created this session, or send a new "initialize" request to start a fresh session.', { recovery: 'send_initialize', reason: 'wrong_agent' }, reqId);
         return;
       }
+      db.touchMcpSession(sessionId);
       await mcpSessions[sessionId].transport.handleRequest(req, res, req.body);
-    } else if (isInitializeRequest(req.body)) {
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
-        onsessioninitialized: (sid: string) => {
-          mcpSessions[sid] = { transport, agentId: agent.id };
-        },
-      });
-
-      transport.onclose = () => {
-        const sid = transport.sessionId;
-        if (sid) delete mcpSessions[sid];
-      };
-
-      const mcp = new McpServer({ name: 'agentboard', version: '1.0.0' });
-      registerMcpTools(mcp, service, agent.id, agent.name);
-      await mcp.connect(transport as unknown as Parameters<typeof mcp.connect>[0]);
-      await transport.handleRequest(req, res, req.body);
-    } else if (sessionId && !mcpSessions[sessionId]) {
-      // Unknown session ID → 404 tells the client to re-initialize
-      res.status(404).json({
-        jsonrpc: '2.0',
-        error: { code: -32000, message: 'Session not found. Please re-initialize.' },
-        id: null,
-      });
-    } else {
-      res.status(400).json({
-        jsonrpc: '2.0',
-        error: { code: -32000, message: 'Bad Request: No valid session ID' },
-        id: null,
-      });
+      return;
     }
+
+    // Case 2: Initialize request → create new session
+    if (isInitializeRequest(req.body)) {
+      const transport = await createMcpTransport(agent.id, agent.name);
+      await transport.handleRequest(req, res, req.body);
+      return;
+    }
+
+    // Case 3: Stale session (known in DB but lost from memory after restart)
+    if (sessionId) {
+      const persistedAgentId = db.getMcpSessionAgentId(sessionId);
+
+      if (persistedAgentId) {
+        if (persistedAgentId !== agent.id) {
+          mcpError(res, 403, -32002, 'Session belongs to a different agent.', { recovery: 'send_initialize', reason: 'wrong_agent' }, reqId);
+          return;
+        }
+        db.deleteMcpSession(sessionId);
+        // Return 404 so MCP SDK clients (like Claude Code) auto-reinitialize
+        mcpError(res, 404, -32004,
+          'MCP session expired because the server was restarted. Your API key is still valid. Action required: Send a new JSON-RPC "initialize" request to POST /mcp with your X-Api-Key header. A new session will be created automatically. You do NOT need to change your API key or any other configuration.',
+          { recovery: 'send_initialize', reason: 'server_restart' }, reqId);
+        return;
+      }
+
+      // Completely unknown session ID
+      mcpError(res, 404, -32003,
+        'Unknown MCP session ID – this session has never existed or was already deleted. Action required: Send a new JSON-RPC "initialize" request (method: "initialize") to POST /mcp with your X-Api-Key header to create a new session.',
+        { recovery: 'send_initialize', reason: 'unknown_session' }, reqId);
+      return;
+    }
+
+    // Case 4: No session ID and not an initialize request
+    mcpError(res, 400, -32000,
+      'Missing MCP session. You must first establish a session before calling tools. Action required: Send a JSON-RPC "initialize" request (method: "initialize") to POST /mcp with your X-Api-Key header. The server will respond with an Mcp-Session-Id header – include that header in all subsequent requests.',
+      { recovery: 'send_initialize', reason: 'no_session' }, reqId);
   } catch {
     if (!res.headersSent) {
-      res.status(500).json({
-        jsonrpc: '2.0',
-        error: { code: -32603, message: 'Internal server error' },
-        id: null,
-      });
+      mcpError(res, 500, -32603,
+        'Internal server error. Please retry your request. If the error persists, try sending a fresh "initialize" request.',
+        { recovery: 'retry_or_reinitialize' }, reqId);
     }
   }
 });
@@ -233,11 +282,16 @@ app.get('/mcp', async (req, res) => {
 
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
   if (!sessionId || !mcpSessions[sessionId]) {
-    res.status(400).send('Invalid or missing session ID');
+    const reason = sessionId
+      ? (db.getMcpSessionAgentId(sessionId) ? 'server_restart' : 'unknown_session')
+      : 'no_session';
+    mcpError(res, 400, -32000,
+      'Invalid or missing MCP session ID. Action required: Send a new "initialize" request to POST /mcp with your X-Api-Key header first.',
+      { recovery: 'send_initialize', reason });
     return;
   }
   if (mcpSessions[sessionId].agentId !== agent.id) {
-    res.status(403).send('Session belongs to a different agent');
+    mcpError(res, 403, -32002, 'Session belongs to a different agent.', { recovery: 'send_initialize', reason: 'wrong_agent' });
     return;
   }
   await mcpSessions[sessionId].transport.handleRequest(req, res);
@@ -250,13 +304,15 @@ app.delete('/mcp', async (req, res) => {
 
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
   if (!sessionId || !mcpSessions[sessionId]) {
-    res.status(400).send('Invalid or missing session ID');
+    if (sessionId) db.deleteMcpSession(sessionId);
+    mcpError(res, 400, -32000, 'Invalid or missing session ID.', { recovery: 'send_initialize' });
     return;
   }
   if (mcpSessions[sessionId].agentId !== agent.id) {
-    res.status(403).send('Session belongs to a different agent');
+    mcpError(res, 403, -32002, 'Session belongs to a different agent.', { recovery: 'send_initialize', reason: 'wrong_agent' });
     return;
   }
+  db.deleteMcpSession(sessionId);
   await mcpSessions[sessionId].transport.handleRequest(req, res);
 });
 
