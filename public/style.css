@@ -510,40 +510,153 @@ select:focus {
   color: var(--text-dim);
 }
 
-/* No project */
-.no-project {
+/* Current project name in header */
+.current-project-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+  background: rgba(15, 18, 25, 0.4);
+  transition: all 0.25s ease;
+}
+
+.current-project-name:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* Project overview */
+.project-overview {
   flex: 1;
   display: flex;
   justify-content: center;
-  align-items: center;
-  color: var(--text-dim);
+  align-items: flex-start;
+  padding: 48px 24px;
 }
 
-.no-project-content {
-  text-align: center;
-  padding: 40px;
+.overview-table-wrap {
+  width: 100%;
+  max-width: 960px;
   background: var(--surface);
   border: 1px solid var(--glass-border);
-  border-radius: 20px;
+  border-radius: var(--radius);
   backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   box-shadow: var(--shadow);
+  overflow: hidden;
 }
 
-.no-project-content h2 {
-  font-size: 22px;
+.overview-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.overview-table thead th {
+  font-size: 10px;
   font-weight: 700;
-  background: linear-gradient(135deg, var(--text) 0%, var(--accent) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  margin-bottom: 14px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  padding: 16px 18px;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--glass-border);
+  text-align: center;
+  white-space: nowrap;
 }
 
-.no-project-content p {
-  font-size: 14px;
+.overview-table thead th.col-name { text-align: left; }
+.overview-table thead th.col-backlog { color: var(--column-backlog); }
+.overview-table thead th.col-ready { color: var(--column-ready); }
+.overview-table thead th.col-in-progress { color: var(--column-in-progress); }
+.overview-table thead th.col-in-review { color: var(--column-in-review); }
+.overview-table thead th.col-done { color: var(--column-done); }
+.overview-table thead th.col-total { color: var(--accent); }
+
+.overview-table tbody tr {
+  cursor: pointer;
+  transition: all 0.25s ease;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.overview-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.overview-table tbody tr:hover {
+  background: rgba(53, 184, 201, 0.05);
+  box-shadow: inset 0 0 40px rgba(53, 184, 201, 0.03);
+}
+
+.overview-table tbody tr:hover .overview-project-name {
+  color: var(--accent);
+}
+
+.overview-table tbody td {
+  padding: 18px;
+  vertical-align: middle;
+}
+
+.overview-project-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text);
+  transition: color 0.2s;
+}
+
+.overview-project-desc {
+  font-size: 12px;
   color: var(--text-dim);
-  line-height: 1.7;
-  max-width: 380px;
+  margin-top: 4px;
+  line-height: 1.4;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-count {
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.overview-count.zero {
+  color: var(--text-dim);
+  opacity: 0.25;
+  font-weight: 400;
+}
+
+.overview-count.col-backlog { color: var(--column-backlog); }
+.overview-count.col-ready { color: var(--column-ready); }
+.overview-count.col-in-progress { color: var(--column-in-progress); }
+.overview-count.col-in-review { color: var(--column-in-review); }
+.overview-count.col-done { color: var(--column-done); }
+
+.overview-count.col-total {
+  color: var(--accent);
+  font-size: 16px;
+  position: relative;
+}
+
+.overview-count.col-total::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  background: var(--accent-soft);
+  border-radius: 8px;
+  z-index: -1;
+}
+
+.overview-empty {
+  color: var(--text-dim);
+  font-size: 14px;
+  text-align: center;
+  padding: 48px 24px;
+  font-style: italic;
 }
 
 /* Activity Feed */

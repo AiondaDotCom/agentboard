@@ -42,33 +42,71 @@ async function logout() {
 // Load data
 // ---------------------------------------------------------------------------
 
-async function loadProjects() {
-  const projects = await fetchJSON('/api/projects');
-  const select = document.getElementById('project-select');
+async function graphqlQuery(query) {
+  const res = await fetch('/graphql', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query }),
+  });
+  const json = await res.json();
+  return json.data;
+}
 
-  // Remember current selection
-  const prev = select.value;
+let overviewPollTimer = null;
 
-  select.innerHTML = '<option value="">-- select project --</option>';
+async function loadProjectOverview() {
+  const data = await graphqlQuery(`{
+    projects {
+      id name description
+      tickets { column }
+    }
+  }`);
+
+  const projects = data?.projects || [];
+  const tbody = document.getElementById('overview-tbody');
+  const empty = document.getElementById('overview-empty');
+  const table = document.querySelector('.overview-table');
+
+  if (projects.length === 0) {
+    table.style.display = 'none';
+    empty.style.display = 'block';
+    return projects;
+  }
+
+  table.style.display = '';
+  empty.style.display = 'none';
+  tbody.innerHTML = '';
+
   projects.forEach(p => {
-    const opt = document.createElement('option');
-    opt.value = p.id;
-    opt.textContent = p.name;
-    select.appendChild(opt);
+    const stats = { backlog: 0, ready: 0, in_progress: 0, in_review: 0, done: 0 };
+    p.tickets.forEach(t => { if (stats[t.column] !== undefined) stats[t.column]++; });
+    const total = Object.values(stats).reduce((a, b) => a + b, 0);
+
+    const tr = document.createElement('tr');
+    tr.onclick = () => selectProject(p.id, p.name);
+
+    function cell(val, cls) {
+      return `<td class="overview-count ${cls}${val === 0 ? ' zero' : ''}">${val}</td>`;
+    }
+
+    tr.innerHTML = `
+      <td>
+        <div class="overview-project-name">${escapeHtml(p.name)}</div>
+        ${p.description ? `<div class="overview-project-desc">${escapeHtml(p.description)}</div>` : ''}
+      </td>
+      ${cell(stats.backlog, 'col-backlog')}
+      ${cell(stats.ready, 'col-ready')}
+      ${cell(stats.in_progress, 'col-in-progress')}
+      ${cell(stats.in_review, 'col-in-review')}
+      ${cell(stats.done, 'col-done')}
+      ${cell(total, 'col-total')}
+    `;
+    tbody.appendChild(tr);
   });
 
   // Auto-select if exactly one project
   if (projects.length === 1 && !currentProjectId) {
-    select.value = projects[0].id;
-    select.style.display = 'none';
-    // Select project directly (don't use dispatchEvent to avoid race conditions)
-    await selectProject(projects[0].id);
-  } else if (projects.length > 1) {
-    select.style.display = '';
-    // Restore previous selection if still valid
-    if (prev && projects.find(p => p.id === prev)) {
-      select.value = prev;
-    }
+    await selectProject(projects[0].id, projects[0].name);
   }
 
   return projects;
@@ -566,15 +604,19 @@ function connectWebSocket(projectId) {
     console.log('[agentboard] WS message:', msg.type, msg.id || '');
 
     if (msg.type === 'connection_ack') {
-      console.log('[agentboard] Connected! Subscribing to events for project', projectId);
-      subscribe(ws, '1', 'ticketCreated', projectId);
-      subscribe(ws, '2', 'ticketUpdated', projectId);
-      subscribe(ws, '3', 'ticketMoved', projectId);
-      subscribe(ws, '4', 'activityAdded', projectId);
-      subscribe(ws, '5', 'ticketDeleted', projectId);
+      console.log('[agentboard] Connected! Subscribing to events', projectId ? `for project ${projectId}` : '(overview)');
+      // Always subscribe to global events
       subscribeGlobal(ws, '6', 'agentChanged', 'id name createdAt');
       subscribeGlobal(ws, '7', 'projectChanged', 'id name description createdAt');
-      subscribe(ws, '8', 'ticketViewed', projectId);
+      // Project-specific subscriptions only when viewing a project
+      if (projectId) {
+        subscribe(ws, '1', 'ticketCreated', projectId);
+        subscribe(ws, '2', 'ticketUpdated', projectId);
+        subscribe(ws, '3', 'ticketMoved', projectId);
+        subscribe(ws, '4', 'activityAdded', projectId);
+        subscribe(ws, '5', 'ticketDeleted', projectId);
+        subscribe(ws, '8', 'ticketViewed', projectId);
+      }
     }
 
     if (msg.type === 'next') {
@@ -596,9 +638,7 @@ function connectWebSocket(projectId) {
     ws = null;
     // Reconnect after 2 seconds
     setTimeout(() => {
-      if (currentProjectId) {
-        connectWebSocket(currentProjectId);
-      }
+      connectWebSocket(currentProjectId);
     }, 2000);
   };
 }
@@ -637,9 +677,9 @@ function handleSubscriptionEvent(subId, data) {
     return;
   }
 
-  // Project changed → reload project list (global, no project needed)
+  // Project changed → reload overview if visible
   if (subId === '7') {
-    loadProjects();
+    if (!currentProjectId) loadProjectOverview();
     return;
   }
 
@@ -695,58 +735,94 @@ function hideLoading() {
   if (loading) {
     loading.classList.add('hidden');
   }
-  // Show no-project screen if nothing is selected yet
+  // Show overview if nothing is selected yet
   if (!currentProjectId) {
-    document.getElementById('no-project').style.display = 'flex';
+    document.getElementById('project-overview').style.display = 'flex';
   }
 }
 
-async function selectProject(projectId) {
+let currentProjectName = null;
+
+async function selectProject(projectId, projectName) {
   currentProjectId = projectId || null;
+  currentProjectName = projectName || null;
 
   const board = document.getElementById('board');
-  const noProject = document.getElementById('no-project');
+  const overview = document.getElementById('project-overview');
   const activityFeed = document.getElementById('activity-feed');
   const auditPanel = document.getElementById('audit-panel');
+  const projectLabel = document.getElementById('current-project-name');
+
+  // Stop overview polling
+  if (overviewPollTimer) { clearInterval(overviewPollTimer); overviewPollTimer = null; }
 
   if (currentProjectId) {
+    overview.style.display = 'none';
     board.classList.remove('hidden');
     board.style.display = 'grid';
-    noProject.style.display = 'none';
     activityFeed.classList.remove('hidden');
     activityFeed.style.display = 'flex';
     auditPanel.classList.remove('hidden');
     auditPanel.style.display = 'block';
+    projectLabel.textContent = `\u2190 ${currentProjectName || 'Back'}`;
+    projectLabel.style.display = '';
 
     await loadBoard(currentProjectId);
     await loadActivity(currentProjectId);
     await loadAudit();
     connectWebSocket(currentProjectId);
   } else {
-    board.classList.add('hidden');
-    noProject.style.display = 'flex';
-    activityFeed.classList.add('hidden');
-    auditPanel.classList.add('hidden');
-    if (ws) { ws.close(); ws = null; }
-    clearAllViewingTimers();
+    showOverview();
   }
 }
 
+async function showOverview() {
+  currentProjectId = null;
+  currentProjectName = null;
+
+  const board = document.getElementById('board');
+  const overview = document.getElementById('project-overview');
+  const activityFeed = document.getElementById('activity-feed');
+  const auditPanel = document.getElementById('audit-panel');
+  const projectLabel = document.getElementById('current-project-name');
+
+  board.classList.add('hidden');
+  overview.style.display = 'flex';
+  activityFeed.classList.add('hidden');
+  auditPanel.classList.add('hidden');
+  projectLabel.style.display = 'none';
+
+  if (ws) { ws.close(); ws = null; }
+  clearAllViewingTimers();
+
+  await loadProjectOverview();
+  connectWebSocket(null);
+
+  // Poll for stat updates while on overview
+  if (overviewPollTimer) clearInterval(overviewPollTimer);
+  overviewPollTimer = setInterval(() => {
+    if (!currentProjectId) loadProjectOverview();
+  }, 5000);
+}
+
+window.showOverview = showOverview;
+
 async function init() {
-  // Show loading screen immediately (already visible in HTML)
-  // Load data, then hide loading once everything is ready
   try {
     await loadAgents();
-    await loadProjects(); // may auto-select and load board
+    await loadProjectOverview(); // may auto-select if single project
   } catch (e) {
     console.error('[agentboard] Init failed:', e);
   }
   hideLoading();
 
-  const select = document.getElementById('project-select');
-  select.addEventListener('change', async (e) => {
-    await selectProject(e.target.value);
-  });
+  // Start overview polling + WS if still on overview
+  if (!currentProjectId) {
+    connectWebSocket(null);
+    overviewPollTimer = setInterval(() => {
+      if (!currentProjectId) loadProjectOverview();
+    }, 5000);
+  }
 
   // Audit toggle
   document.getElementById('audit-toggle').addEventListener('click', () => {
@@ -762,15 +838,6 @@ async function init() {
       btn.textContent = 'Show';
     }
   });
-
-  // Poll for new projects every 3 seconds until one is selected
-  setInterval(async () => {
-    if (!currentProjectId) {
-      await loadAgents();
-      await loadProjects();
-      hideLoading();
-    }
-  }, 3000);
 }
 
 // Ensure the loading screen is painted before init runs

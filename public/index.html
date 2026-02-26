@@ -12,12 +12,10 @@
       <a href="https://aionda.com" target="_blank" rel="noopener noreferrer" class="logo-link">
         <img src="aionda_logo.png" alt="Aionda" class="logo-img">
       </a>
-      <span class="logo-text">agentboard</span>
+      <span class="logo-text" onclick="showOverview()" style="cursor:pointer">agentboard</span>
     </div>
     <div class="header-right">
-      <select id="project-select">
-        <option value="">-- select project --</option>
-      </select>
+      <span id="current-project-name" class="current-project-name" style="display:none" onclick="showOverview()"></span>
       <span id="agent-count" class="badge" onclick="openAgentsModal()" title="Show registered agents &amp; API keys">0 agents</span>
       <button id="logout-btn" class="btn-logout" onclick="logout()" title="Sign out">Sign out</button>
     </div>
@@ -69,10 +67,25 @@
     </div>
   </div>
 
-  <div id="no-project" class="no-project" style="display:none">
-    <div class="no-project-content">
-      <h2>Select a project</h2>
-      <p>Choose a project from the dropdown to view the Kanban board. AI agents control the board via REST API &mdash; you watch in realtime.</p>
+  <div id="project-overview" class="project-overview" style="display:none">
+    <div class="overview-table-wrap">
+      <table class="overview-table">
+        <thead>
+          <tr>
+            <th class="col-name">Project</th>
+            <th class="col-backlog">Backlog</th>
+            <th class="col-ready">Ready</th>
+            <th class="col-in-progress">In Progress</th>
+            <th class="col-in-review">Review</th>
+            <th class="col-done">Done</th>
+            <th class="col-total">Total</th>
+          </tr>
+        </thead>
+        <tbody id="overview-tbody"></tbody>
+      </table>
+      <div id="overview-empty" class="overview-empty" style="display:none">
+        No projects yet. An AI agent will create one via the API.
+      </div>
     </div>
   </div>
 
