@@ -803,11 +803,11 @@ function connectWebSocket(projectId) {
 function subscribe(socket, id, eventName, projectId) {
   let query;
   if (eventName === 'activityAdded') {
-    query = `subscription { ${eventName}(projectId: "${projectId}") { id agent { id name } ticketId action details timestamp } }`;
+    query = `subscription { ${eventName}(projectId: "${projectId}") { id agentId agent { id name } ticketId action details timestamp } }`;
   } else if (eventName === 'ticketViewed') {
     query = `subscription { ${eventName}(projectId: "${projectId}") { ticketId projectId agentId agentName } }`;
   } else {
-    query = `subscription { ${eventName}(projectId: "${projectId}") { id projectId title description column position agentId agent { id name } createdAt updatedAt } }`;
+    query = `subscription { ${eventName}(projectId: "${projectId}") { id projectId title description column position agentId assigneeId agent { id name } assignee { id name } createdAt updatedAt } }`;
   }
 
   socket.send(JSON.stringify({

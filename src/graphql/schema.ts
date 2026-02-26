@@ -45,6 +45,7 @@ export const typeDefs = gql`
 
   type Activity {
     id: ID!
+    agentId: String
     agent: Agent
     ticketId: String
     action: String!
