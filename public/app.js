@@ -584,6 +584,7 @@ function clearAllViewingTimers() {
 
 function connectWebSocket(projectId) {
   if (ws) {
+    ws.onclose = null; // prevent old socket's onclose from interfering
     ws.close();
     ws = null;
   }
@@ -592,30 +593,33 @@ function connectWebSocket(projectId) {
   const wsUrl = `${protocol}//${location.host}/graphql`;
 
   console.log('[agentboard] Connecting WebSocket to', wsUrl);
-  ws = new WebSocket(wsUrl, 'graphql-transport-ws');
+  const socket = new WebSocket(wsUrl, 'graphql-transport-ws');
+  ws = socket;
 
-  ws.onopen = () => {
+  socket.onopen = () => {
+    if (ws !== socket) return; // stale socket
     console.log('[agentboard] WebSocket open, sending connection_init');
-    ws.send(JSON.stringify({ type: 'connection_init' }));
+    socket.send(JSON.stringify({ type: 'connection_init' }));
   };
 
-  ws.onmessage = (event) => {
+  socket.onmessage = (event) => {
+    if (ws !== socket) return; // stale socket
     const msg = JSON.parse(event.data);
     console.log('[agentboard] WS message:', msg.type, msg.id || '');
 
     if (msg.type === 'connection_ack') {
       console.log('[agentboard] Connected! Subscribing to events', projectId ? `for project ${projectId}` : '(overview)');
       // Always subscribe to global events
-      subscribeGlobal(ws, '6', 'agentChanged', 'id name createdAt');
-      subscribeGlobal(ws, '7', 'projectChanged', 'id name description createdAt');
+      subscribeGlobal(socket, '6', 'agentChanged', 'id name createdAt');
+      subscribeGlobal(socket, '7', 'projectChanged', 'id name description createdAt');
       // Project-specific subscriptions only when viewing a project
       if (projectId) {
-        subscribe(ws, '1', 'ticketCreated', projectId);
-        subscribe(ws, '2', 'ticketUpdated', projectId);
-        subscribe(ws, '3', 'ticketMoved', projectId);
-        subscribe(ws, '4', 'activityAdded', projectId);
-        subscribe(ws, '5', 'ticketDeleted', projectId);
-        subscribe(ws, '8', 'ticketViewed', projectId);
+        subscribe(socket, '1', 'ticketCreated', projectId);
+        subscribe(socket, '2', 'ticketUpdated', projectId);
+        subscribe(socket, '3', 'ticketMoved', projectId);
+        subscribe(socket, '4', 'activityAdded', projectId);
+        subscribe(socket, '5', 'ticketDeleted', projectId);
+        subscribe(socket, '8', 'ticketViewed', projectId);
       }
     }
 
@@ -629,12 +633,13 @@ function connectWebSocket(projectId) {
     }
   };
 
-  ws.onerror = (err) => {
+  socket.onerror = (err) => {
     console.error('[agentboard] WebSocket error:', err);
   };
 
-  ws.onclose = (event) => {
+  socket.onclose = (event) => {
     console.log('[agentboard] WebSocket closed, code:', event.code, 'reason:', event.reason);
+    if (ws !== socket) return; // already replaced by a new connection
     ws = null;
     // Reconnect after 2 seconds
     setTimeout(() => {
