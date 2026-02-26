@@ -53,6 +53,7 @@ async function graphqlQuery(query) {
 }
 
 let overviewPollTimer = null;
+let prevOverviewStats = {}; // projectId -> { backlog, ready, ... , total }
 
 async function loadProjectOverview() {
   const data = await graphqlQuery(`{
@@ -75,34 +76,89 @@ async function loadProjectOverview() {
 
   table.style.display = '';
   empty.style.display = 'none';
-  tbody.innerHTML = '';
+
+  const newStats = {};
 
   projects.forEach(p => {
     const stats = { backlog: 0, ready: 0, in_progress: 0, in_review: 0, done: 0 };
     p.tickets.forEach(t => { if (stats[t.column] !== undefined) stats[t.column]++; });
-    const total = Object.values(stats).reduce((a, b) => a + b, 0);
-
-    const tr = document.createElement('tr');
-    tr.onclick = () => selectProject(p.id, p.name);
-
-    function cell(val, cls) {
-      return `<td class="overview-count ${cls}${val === 0 ? ' zero' : ''}">${val}</td>`;
-    }
-
-    tr.innerHTML = `
-      <td>
-        <div class="overview-project-name">${escapeHtml(p.name)}</div>
-        ${p.description ? `<div class="overview-project-desc">${escapeHtml(p.description)}</div>` : ''}
-      </td>
-      ${cell(stats.backlog, 'col-backlog')}
-      ${cell(stats.ready, 'col-ready')}
-      ${cell(stats.in_progress, 'col-in-progress')}
-      ${cell(stats.in_review, 'col-in-review')}
-      ${cell(stats.done, 'col-done')}
-      ${cell(total, 'col-total')}
-    `;
-    tbody.appendChild(tr);
+    stats.total = Object.values(stats).reduce((a, b) => a + b, 0);
+    newStats[p.id] = stats;
   });
+
+  // Check if we can do an in-place update (same projects, same order)
+  const existingRows = tbody.querySelectorAll('tr');
+  const canPatch = existingRows.length === projects.length &&
+    projects.every((p, i) => existingRows[i]?.dataset.projectId === p.id);
+
+  if (canPatch) {
+    // In-place update: only update changed cells with animation
+    const cols = ['backlog', 'ready', 'in_progress', 'in_review', 'done', 'total'];
+    projects.forEach((p, i) => {
+      const row = existingRows[i];
+      const cells = row.querySelectorAll('.overview-count');
+      const prev = prevOverviewStats[p.id] || {};
+      const cur = newStats[p.id];
+
+      cols.forEach((col, ci) => {
+        const cell = cells[ci];
+        if (!cell) return;
+        const oldVal = prev[col] ?? -1;
+        const newVal = cur[col];
+        if (oldVal !== newVal) {
+          cell.textContent = newVal;
+          cell.className = `overview-count col-${col.replace('_', '-')}${newVal === 0 ? ' zero' : ''}`;
+          cell.classList.add('overview-flash');
+          cell.addEventListener('animationend', () => cell.classList.remove('overview-flash'), { once: true });
+
+          // Ticker delta badge (like a stock ticker)
+          if (oldVal >= 0) {
+            const delta = newVal - oldVal;
+            const badge = document.createElement('span');
+            badge.className = `overview-delta ${delta > 0 ? 'delta-up' : 'delta-down'}`;
+            badge.textContent = delta > 0 ? `+${delta}` : `${delta}`;
+            cell.style.position = 'relative';
+            cell.appendChild(badge);
+            badge.addEventListener('animationend', () => badge.remove(), { once: true });
+          }
+        }
+      });
+    });
+  } else {
+    // Full rebuild (project list changed)
+    tbody.innerHTML = '';
+    const cols = ['backlog', 'ready', 'in_progress', 'in_review', 'done', 'total'];
+
+    projects.forEach(p => {
+      const stats = newStats[p.id];
+      const tr = document.createElement('tr');
+      tr.dataset.projectId = p.id;
+      tr.onclick = () => selectProject(p.id, p.name);
+
+      function cell(val, col) {
+        return `<td class="overview-count col-${col.replace('_', '-')}${val === 0 ? ' zero' : ''}">${val}</td>`;
+      }
+
+      const isNew = !!prevOverviewStats[p.id] === false && Object.keys(prevOverviewStats).length > 0;
+
+      tr.innerHTML = `
+        <td>
+          <div class="overview-project-name">${escapeHtml(p.name)}</div>
+          ${p.description ? `<div class="overview-project-desc">${escapeHtml(p.description)}</div>` : ''}
+        </td>
+        ${cols.map(c => cell(stats[c], c)).join('')}
+      `;
+
+      if (isNew) {
+        tr.classList.add('overview-row-new');
+        tr.addEventListener('animationend', () => tr.classList.remove('overview-row-new'), { once: true });
+      }
+
+      tbody.appendChild(tr);
+    });
+  }
+
+  prevOverviewStats = newStats;
 
   // Auto-select if exactly one project
   if (projects.length === 1 && !currentProjectId) {

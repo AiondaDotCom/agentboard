@@ -659,6 +659,78 @@ select:focus {
   font-style: italic;
 }
 
+/* Cell flash animation when value changes */
+.overview-count.overview-flash {
+  animation: cellFlash 0.8s ease-out;
+}
+
+@keyframes cellFlash {
+  0% {
+    background: rgba(53, 184, 201, 0.3);
+    transform: scale(1.15);
+  }
+  100% {
+    background: transparent;
+    transform: scale(1);
+  }
+}
+
+/* Stock ticker delta badge */
+.overview-delta {
+  position: absolute;
+  top: -2px;
+  right: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  pointer-events: none;
+  white-space: nowrap;
+  border-radius: 6px;
+  padding: 1px 5px;
+}
+
+.overview-delta.delta-up {
+  color: var(--green);
+  background: rgba(52, 211, 153, 0.15);
+  animation: deltaFlyUp 1.2s ease-out forwards;
+}
+
+.overview-delta.delta-down {
+  color: var(--red);
+  background: rgba(239, 68, 68, 0.15);
+  animation: deltaFlyUp 1.2s ease-out forwards;
+}
+
+@keyframes deltaFlyUp {
+  0% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(-18px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-28px);
+  }
+}
+
+/* New project row animation */
+.overview-table tbody tr.overview-row-new {
+  animation: rowSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes rowSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 /* Activity Feed */
 .activity-feed {
   border-top: 1px solid var(--glass-border);
