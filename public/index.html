@@ -116,7 +116,15 @@
         <button class="modal-close" onclick="closeModal()">&times;</button>
       </div>
       <h2 id="modal-title" class="modal-title"></h2>
-      <div id="modal-agent" class="modal-agent"></div>
+      <div class="modal-meta-row">
+        <div id="modal-author" class="modal-agent"></div>
+        <div class="modal-assignee-row">
+          <span class="modal-assignee-label">Assigned:</span>
+          <select id="modal-assignee-select" class="modal-assignee-select" onchange="handleAssigneeChange(this)">
+            <option value="">Unassigned</option>
+          </select>
+        </div>
+      </div>
       <pre id="modal-desc" class="modal-desc"></pre>
 
       <div class="modal-tabs">

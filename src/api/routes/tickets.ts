@@ -102,6 +102,26 @@ export function createTicketRoutes(service: BoardService): Router {
     }
   });
 
+  // PATCH /api/projects/:id/tickets/:ticketId/assign
+  router.patch('/tickets/:ticketId/assign', auth, (req: Request, res: Response): void => {
+    try {
+      const projectId = String(req.params['id'] ?? '');
+      const ticketId = String(req.params['ticketId'] ?? '');
+      const { assignee_id } = req.body as { assignee_id?: unknown };
+      const actorId = (req as AuthenticatedRequest).agentId ?? null;
+
+      if (assignee_id && typeof assignee_id === 'string') {
+        const ticket = service.assignTicket(projectId, ticketId, assignee_id, actorId);
+        res.json(ticket);
+      } else {
+        const ticket = service.unassignTicket(projectId, ticketId, actorId);
+        res.json(ticket);
+      }
+    } catch (err) {
+      handleServiceError(res, err);
+    }
+  });
+
   // DELETE /api/projects/:id/tickets/:ticketId
   router.delete('/tickets/:ticketId', auth, (req: Request, res: Response): void => {
     try {
@@ -178,6 +198,23 @@ export function createHumanTicketRoutes(service: BoardService): Router {
       const projectId = String(req.params['id'] ?? '');
       const ticketId = String(req.params['ticketId'] ?? '');
       res.json(service.closeTicket(projectId, ticketId));
+    } catch (err) {
+      handleServiceError(res, err);
+    }
+  });
+
+  // POST /api/projects/:id/tickets/:ticketId/assign (human action)
+  router.post('/tickets/:ticketId/assign', (req: Request, res: Response): void => {
+    try {
+      const projectId = String(req.params['id'] ?? '');
+      const ticketId = String(req.params['ticketId'] ?? '');
+      const { assignee_id } = req.body as { assignee_id?: unknown };
+
+      if (assignee_id && typeof assignee_id === 'string') {
+        res.json(service.assignTicket(projectId, ticketId, assignee_id));
+      } else {
+        res.json(service.unassignTicket(projectId, ticketId));
+      }
     } catch (err) {
       handleServiceError(res, err);
     }

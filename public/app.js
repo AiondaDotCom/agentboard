@@ -319,7 +319,8 @@ function createTicketCard(ticket) {
   card.className = 'ticket-card';
   card.dataset.ticketId = ticket.id;
 
-  const agent = ticket.agentId ? (agents[ticket.agentId] || { name: '???' }) : null;
+  const author = ticket.agentId ? (agents[ticket.agentId] || { name: '???' }) : null;
+  const assignee = ticket.assigneeId ? (agents[ticket.assigneeId] || { name: '???' }) : null;
   const isDone = ticket.column === 'done';
 
   card.innerHTML = `
@@ -327,7 +328,8 @@ function createTicketCard(ticket) {
     <div class="ticket-title">${escapeHtml(ticket.title)}</div>
     ${ticket.description ? `<div class="ticket-desc">${escapeHtml(ticket.description)}</div>` : ''}
     <div class="ticket-meta">
-      ${agent ? `<span class="ticket-agent">&#x1f916; ${escapeHtml(agent.name)}</span>` : '<span></span>'}
+      ${author ? `<span class="ticket-agent" title="Author">&#x270d;&#xfe0f; ${escapeHtml(author.name)}</span>` : '<span></span>'}
+      ${assignee ? `<span class="ticket-assignee" title="Assigned to">&#x1f464; ${escapeHtml(assignee.name)}</span>` : ''}
     </div>
     <div class="ticket-actions">
       ${isDone
@@ -472,10 +474,21 @@ async function openModal(projectId, ticketId) {
   badge.textContent = ticket.column.replace(/_/g, ' ');
   badge.className = 'modal-column-badge ' + ticket.column;
 
-  // Title + agent
+  // Title + author
   document.getElementById('modal-title').textContent = ticket.title;
-  const agent = ticket.agentId ? (agents[ticket.agentId] || { name: '???' }) : null;
-  document.getElementById('modal-agent').textContent = agent ? `\u{1f916} ${agent.name}` : '';
+  const author = ticket.agentId ? (agents[ticket.agentId] || { name: '???' }) : null;
+  document.getElementById('modal-author').textContent = author ? `\u{270d}\u{fe0f} Author: ${author.name}` : '';
+
+  // Assignee dropdown
+  const assigneeSelect = document.getElementById('modal-assignee-select');
+  assigneeSelect.innerHTML = '<option value="">Unassigned</option>';
+  Object.values(agents).forEach(a => {
+    const opt = document.createElement('option');
+    opt.value = a.id;
+    opt.textContent = a.name;
+    if (ticket.assigneeId === a.id) opt.selected = true;
+    assigneeSelect.appendChild(opt);
+  });
 
   // Description (monospace, preserves ASCII art)
   document.getElementById('modal-desc').textContent = ticket.description || '';
@@ -554,9 +567,28 @@ function switchTab(tabName) {
   });
 }
 
+async function handleAssigneeChange(select) {
+  if (!currentModalTicket) return;
+  const { projectId, id: ticketId } = currentModalTicket;
+  const assigneeId = select.value || null;
+
+  try {
+    const ticket = await postJSON(
+      `/api/projects/${projectId}/tickets/${ticketId}/assign`,
+      { assignee_id: assigneeId },
+    );
+    currentModalTicket = ticket;
+  } catch (err) {
+    console.error('[agentboard] assign failed:', err);
+    // revert select
+    select.value = currentModalTicket.assigneeId || '';
+  }
+}
+
 window.openModal = openModal;
 window.closeModal = closeModal;
 window.switchTab = switchTab;
+window.handleAssigneeChange = handleAssigneeChange;
 
 // ---------------------------------------------------------------------------
 // Agents Modal (show API keys)

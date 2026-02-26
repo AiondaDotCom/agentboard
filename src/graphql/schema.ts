@@ -20,6 +20,8 @@ export const typeDefs = gql`
     position: Int!
     agent: Agent
     agentId: String
+    assignee: Agent
+    assigneeId: String
     comments: [Comment!]!
     createdAt: String!
     updatedAt: String!

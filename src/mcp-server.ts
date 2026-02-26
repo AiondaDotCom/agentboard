@@ -86,6 +86,17 @@ export function registerMcpTools(
   }, async ({ project_id, ticket_id, column }) =>
     wrap(() => service.moveTicket(project_id, ticket_id, column, agentId)));
 
+  mcp.tool('assign_ticket', 'Assign a ticket to an agent, or unassign it', {
+    project_id: z.string().describe('Project ID'),
+    ticket_id: z.string().describe('Ticket ID'),
+    assignee_id: z.string().optional().describe('Agent ID to assign (omit or empty to unassign)'),
+  }, async ({ project_id, ticket_id, assignee_id }) => {
+    if (assignee_id) {
+      return wrap(() => service.assignTicket(project_id, ticket_id, assignee_id, agentId));
+    }
+    return wrap(() => service.unassignTicket(project_id, ticket_id, agentId));
+  });
+
   mcp.tool('delete_ticket', 'Delete a ticket',
     { project_id: z.string().describe('Project ID'), ticket_id: z.string().describe('Ticket ID') },
     async ({ project_id, ticket_id }) => wrap(() => { service.deleteTicket(project_id, ticket_id, agentId); return { deleted: true }; }));

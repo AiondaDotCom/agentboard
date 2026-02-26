@@ -427,13 +427,20 @@ select:focus {
 
 .ticket-meta {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 10px;
   align-items: center;
   font-size: 11px;
   color: var(--text-dim);
 }
 
 .ticket-agent {
+  color: var(--text-dim);
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.ticket-assignee {
   color: var(--accent);
   font-weight: 600;
 }
@@ -997,11 +1004,47 @@ select:focus {
   line-height: 1.3;
 }
 
+.modal-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
 .modal-agent {
   font-size: 13px;
-  color: var(--accent);
-  font-weight: 600;
-  margin-bottom: 16px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.modal-assignee-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.modal-assignee-label {
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.modal-assignee-select {
+  background: var(--glass);
+  color: var(--text);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+.modal-assignee-select:hover,
+.modal-assignee-select:focus {
+  border-color: var(--accent);
+  outline: none;
 }
 
 .modal-desc {

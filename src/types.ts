@@ -56,6 +56,7 @@ export interface Ticket {
   column: Column;
   position: number;
   agentId: string | null;
+  assigneeId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -91,6 +92,8 @@ export type ActivityAction =
   | 'ticket_updated'
   | 'ticket_moved'
   | 'ticket_deleted'
+  | 'ticket_assigned'
+  | 'ticket_unassigned'
   | 'comment_added'
   | 'project_read'
   | 'tickets_listed'

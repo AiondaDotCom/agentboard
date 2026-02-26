@@ -47,6 +47,7 @@ interface TicketRow {
   column_name: string;
   position: number;
   agent_id: string | null;
+  assignee_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -156,6 +157,7 @@ export class AgentboardDB {
       column: row.column_name as Column,
       position: row.position,
       agentId: row.agent_id,
+      assigneeId: row.assignee_id ?? null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -482,6 +484,27 @@ export class AgentboardDB {
     actorId?: string | null,
   ): Ticket | undefined {
     return this.updateTicket(projectId, ticketId, { column }, actorId);
+  }
+
+  assignTicket(
+    projectId: string,
+    ticketId: string,
+    assigneeId: string | null,
+    actorId?: string | null,
+  ): Ticket | undefined {
+    const existing = this.getTicket(projectId, ticketId);
+    if (!existing) return undefined;
+
+    const actor = actorId !== undefined ? actorId : null;
+    if (assigneeId !== existing.assigneeId) {
+      this.logRevision(existing.id, actor, 'assigneeId', existing.assigneeId ?? '', assigneeId ?? '');
+    }
+
+    this.db
+      .prepare(`UPDATE tickets SET assignee_id = ?, updated_at = datetime('now') WHERE id = ? AND project_id = ?`)
+      .run(assigneeId, existing.id, projectId);
+
+    return this.getTicket(projectId, existing.id);
   }
 
   deleteTicket(projectId: string, ticketId: string): boolean {

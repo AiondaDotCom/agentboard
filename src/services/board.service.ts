@@ -288,6 +288,59 @@ export class BoardService {
     this.audit(actorId ?? null, 'DELETE', `ticket '${ticket.title}'`);
   }
 
+  assignTicket(
+    projectId: string,
+    ticketId: string,
+    assigneeId: string,
+    actorId?: string | null,
+  ): Ticket {
+    const resolved = this.requireTicket(projectId, ticketId);
+
+    // Validate assignee exists
+    const assignee = this.db.getAgentById(assigneeId);
+    if (!assignee) throw new NotFoundError('Agent not found');
+
+    const ticket = this.db.assignTicket(projectId, resolved.id, assigneeId, actorId ?? null);
+    if (!ticket) throw new NotFoundError('Ticket not found');
+
+    this.logAndPublishActivity(
+      actorId ?? null, projectId, ticket.id,
+      'ticket_assigned', `Assigned to ${assignee.name}`,
+    );
+
+    pubsub.publish(EVENTS.TICKET_UPDATED, {
+      ticketUpdated: ticket,
+      projectId: ticket.projectId,
+    });
+
+    this.audit(actorId ?? null, 'ASSIGN', `ticket '${ticket.title}'`, `→ ${assignee.name}`);
+    return ticket;
+  }
+
+  unassignTicket(
+    projectId: string,
+    ticketId: string,
+    actorId?: string | null,
+  ): Ticket {
+    const resolved = this.requireTicket(projectId, ticketId);
+
+    const ticket = this.db.assignTicket(projectId, resolved.id, null, actorId ?? null);
+    if (!ticket) throw new NotFoundError('Ticket not found');
+
+    this.logAndPublishActivity(
+      actorId ?? null, projectId, ticket.id,
+      'ticket_unassigned', 'Unassigned ticket',
+    );
+
+    pubsub.publish(EVENTS.TICKET_UPDATED, {
+      ticketUpdated: ticket,
+      projectId: ticket.projectId,
+    });
+
+    this.audit(actorId ?? null, 'UNASSIGN', `ticket '${ticket.title}'`);
+    return ticket;
+  }
+
   closeTicket(projectId: string, ticketId: string): Ticket {
     const resolved = this.requireTicket(projectId, ticketId);
 

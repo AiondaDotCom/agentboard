@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   column_name TEXT NOT NULL DEFAULT 'backlog',
   position INTEGER NOT NULL DEFAULT 0,
   agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
+  assignee_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

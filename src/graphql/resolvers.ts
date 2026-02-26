@@ -25,6 +25,10 @@ export function createResolvers(db: AgentboardDB): Record<string, unknown> {
         if (parent.agentId === null) return null;
         return db.getAgentById(parent.agentId) ?? null;
       },
+      assignee: (parent: { assigneeId: string | null }): ReturnType<typeof db.getAgentById> | null => {
+        if (parent.assigneeId === null) return null;
+        return db.getAgentById(parent.assigneeId) ?? null;
+      },
       comments: (parent: { id: string }): ReturnType<typeof db.getCommentsByTicket> => db.getCommentsByTicket(parent.id),
     },
     Comment: {
