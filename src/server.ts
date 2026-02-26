@@ -151,7 +151,11 @@ function authenticateMcpRequest(
   if (!apiKey) {
     res.status(401).json({
       jsonrpc: '2.0',
-      error: { code: -32001, message: 'Missing X-Api-Key header' },
+      error: {
+        code: -32001,
+        message: 'Missing X-Api-Key header. Every MCP request must include an X-Api-Key header with a valid agent API key. Example: -H "X-Api-Key: ab-your-key-here"',
+        data: { recovery: 'add_api_key_header' },
+      },
       id: null,
     });
     return null;
@@ -160,7 +164,11 @@ function authenticateMcpRequest(
   if (!agent) {
     res.status(403).json({
       jsonrpc: '2.0',
-      error: { code: -32002, message: 'Invalid API key' },
+      error: {
+        code: -32002,
+        message: `Invalid API key "${apiKey.slice(0, 8)}...". This key is not registered. Check your API key or ask the admin to verify it in the Agentboard UI under "agents".`,
+        data: { recovery: 'check_api_key' },
+      },
       id: null,
     });
     return null;
@@ -213,6 +221,16 @@ function mcpError(
 
 // POST /mcp – JSON-RPC messages + initialization
 app.post('/mcp', async (req, res) => {
+  // Check Accept header before SDK does (SDK returns a cryptic 406)
+  const accept = req.headers.accept ?? '';
+  if (!accept.includes('application/json') || !accept.includes('text/event-stream')) {
+    mcpError(res, 406, -32000,
+      'Missing required Accept header. Your HTTP request must include the header: Accept: application/json, text/event-stream — This is required by the MCP StreamableHTTP transport. Most MCP client libraries set this automatically. If you are using curl or a raw HTTP client, add: -H "Accept: application/json, text/event-stream"',
+      { recovery: 'add_accept_header', required_header: 'Accept: application/json, text/event-stream' },
+      req.body?.id);
+    return;
+  }
+
   const agent = authenticateMcpRequest(req, res);
   if (!agent) return;
 
