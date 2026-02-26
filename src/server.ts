@@ -28,9 +28,9 @@ import { createAuditMiddleware } from './api/middleware/audit.js';
 const PORT = parseInt(process.env['PORT'] ?? '3000', 10);
 
 // ---------------------------------------------------------------------------
-// Session management (in-memory – sessions reset on server restart)
+// Session management (persistent in SQLite)
 // ---------------------------------------------------------------------------
-const sessions = new Set<string>();
+const TEN_YEARS = 10 * 365 * 24 * 3600;
 
 function parseCookies(header: string | undefined): Record<string, string> {
   if (!header) return {};
@@ -70,8 +70,8 @@ app.post('/api/auth/login', (req, res): void => {
   const { key } = req.body ?? {};
   if (typeof key === 'string' && key === ADMIN_API_KEY) {
     const token = randomUUID();
-    sessions.add(token);
-    res.setHeader('Set-Cookie', `agentboard_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${7 * 24 * 3600}`);
+    db.createSession(token);
+    res.setHeader('Set-Cookie', `agentboard_session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${TEN_YEARS}`);
     res.json({ ok: true });
   } else {
     res.status(401).json({ error: 'Invalid admin key' });
@@ -81,7 +81,7 @@ app.post('/api/auth/login', (req, res): void => {
 app.post('/api/auth/logout', (req, res): void => {
   const cookies = parseCookies(req.headers.cookie);
   const token = cookies['agentboard_session'];
-  if (token) sessions.delete(token);
+  if (token) db.deleteSession(token);
   res.setHeader('Set-Cookie', 'agentboard_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');
   res.json({ ok: true });
 });
@@ -89,7 +89,7 @@ app.post('/api/auth/logout', (req, res): void => {
 app.get('/api/auth/status', (req, res): void => {
   const cookies = parseCookies(req.headers.cookie);
   const token = cookies['agentboard_session'];
-  res.json({ authenticated: !!(token && sessions.has(token)) });
+  res.json({ authenticated: !!(token && db.hasSession(token)) });
 });
 
 // Audit middleware – logs every API call (infrastructure, stays at HTTP layer)
@@ -106,7 +106,7 @@ app.use('/api/audit', createAuditRoutes(service));
 app.get('/api/agents/keys', (req, res): void => {
   const cookies = parseCookies(req.headers.cookie);
   const token = cookies['agentboard_session'];
-  if (!token || !sessions.has(token)) {
+  if (!token || !db.hasSession(token)) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
@@ -272,7 +272,7 @@ app.use((req, res, next): void => {
 
   const cookies = parseCookies(req.headers.cookie);
   const token = cookies['agentboard_session'];
-  if (token && sessions.has(token)) { next(); return; }
+  if (token && db.hasSession(token)) { next(); return; }
 
   // Non-HTML requests (JS, CSS, images) from unauthenticated clients → 401
   const accept = req.headers.accept ?? '';

@@ -619,4 +619,21 @@ export class AgentboardDB {
 
     return rows.map((r) => this.mapRevisionRow(r));
   }
+
+  // ---------------------------------------------------------------------------
+  // Sessions (persistent across restarts)
+  // ---------------------------------------------------------------------------
+
+  createSession(token: string): void {
+    this.db.prepare('INSERT INTO sessions (token) VALUES (?)').run(token);
+  }
+
+  hasSession(token: string): boolean {
+    const row = this.db.prepare('SELECT 1 FROM sessions WHERE token = ?').get(token);
+    return !!row;
+  }
+
+  deleteSession(token: string): void {
+    this.db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+  }
 }
