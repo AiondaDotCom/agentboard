@@ -329,7 +329,7 @@ function createTicketCard(ticket) {
     ${ticket.description ? `<div class="ticket-desc">${escapeHtml(ticket.description)}</div>` : ''}
     <div class="ticket-meta">
       ${author ? `<span class="ticket-agent" title="Author">&#x270d;&#xfe0f; ${escapeHtml(author.name)}</span>` : '<span></span>'}
-      ${assignee ? `<span class="ticket-assignee" title="Assigned to">&#x1f464; ${escapeHtml(assignee.name)}</span>` : ''}
+      ${assignee ? `<span class="ticket-assignee" title="Assigned to">&#x1f527; ${escapeHtml(assignee.name)}</span>` : ''}
     </div>
     <div class="ticket-actions">
       ${isDone
