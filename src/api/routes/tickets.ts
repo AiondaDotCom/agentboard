@@ -52,7 +52,12 @@ export function createTicketRoutes(service: BoardService): Router {
     try {
       const projectId = String(req.params['id'] ?? '');
       const ticketId = String(req.params['ticketId'] ?? '');
-      res.json(service.getTicket(projectId, ticketId));
+
+      // Optional agent detection for viewing indicator (no auth required)
+      const apiKey = req.headers['x-api-key'];
+      const agent = typeof apiKey === 'string' ? service.getAgentByApiKey(apiKey) : undefined;
+
+      res.json(service.getTicket(projectId, ticketId, agent?.id ?? null));
     } catch (err) {
       handleServiceError(res, err);
     }

@@ -161,9 +161,10 @@ export class BoardService {
     return ticket;
   }
 
-  getTicket(projectId: string, ticketId: string): Ticket {
+  getTicket(projectId: string, ticketId: string, viewerAgentId?: string | null): Ticket {
     const ticket = this.db.getTicket(projectId, ticketId);
     if (!ticket) throw new NotFoundError('Ticket not found');
+    if (viewerAgentId) this.notifyTicketView(projectId, ticketId, viewerAgentId);
     return ticket;
   }
 
@@ -307,8 +308,9 @@ export class BoardService {
     return comment;
   }
 
-  getCommentsByTicket(projectId: string, ticketId: string): Comment[] {
+  getCommentsByTicket(projectId: string, ticketId: string, viewerAgentId?: string | null): Comment[] {
     this.requireTicket(projectId, ticketId);
+    if (viewerAgentId) this.notifyTicketView(projectId, ticketId, viewerAgentId);
     return this.db.getCommentsByTicket(ticketId);
   }
 
@@ -316,8 +318,9 @@ export class BoardService {
   // Revisions
   // -------------------------------------------------------------------------
 
-  getRevisionsByTicket(projectId: string, ticketId: string): TicketRevision[] {
+  getRevisionsByTicket(projectId: string, ticketId: string, viewerAgentId?: string | null): TicketRevision[] {
     this.requireTicket(projectId, ticketId);
+    if (viewerAgentId) this.notifyTicketView(projectId, ticketId, viewerAgentId);
     return this.db.getRevisionsByTicket(ticketId);
   }
 

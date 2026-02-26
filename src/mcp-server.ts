@@ -54,11 +54,8 @@ export function registerMcpTools(
 
   mcp.tool('get_ticket', 'Get details of a specific ticket including description',
     { project_id: z.string().describe('Project ID'), ticket_id: z.string().describe('Ticket ID') },
-    async ({ project_id, ticket_id }) => {
-      const result = wrap(() => service.getTicket(project_id, ticket_id));
-      service.notifyTicketView(project_id, ticket_id, agentId);
-      return result;
-    });
+    async ({ project_id, ticket_id }) =>
+      wrap(() => service.getTicket(project_id, ticket_id, agentId)));
 
   mcp.tool('create_ticket', 'Create a new ticket in a project', {
     project_id: z.string().describe('Project ID'),
@@ -103,20 +100,14 @@ export function registerMcpTools(
 
   mcp.tool('get_comments', 'Get all comments on a ticket',
     { project_id: z.string().describe('Project ID'), ticket_id: z.string().describe('Ticket ID') },
-    async ({ project_id, ticket_id }) => {
-      const result = wrap(() => service.getCommentsByTicket(project_id, ticket_id));
-      service.notifyTicketView(project_id, ticket_id, agentId);
-      return result;
-    });
+    async ({ project_id, ticket_id }) =>
+      wrap(() => service.getCommentsByTicket(project_id, ticket_id, agentId)));
 
   // --- History ---
   mcp.tool('get_ticket_history', 'Get the full revision history of a ticket (who changed what, when)',
     { project_id: z.string().describe('Project ID'), ticket_id: z.string().describe('Ticket ID') },
-    async ({ project_id, ticket_id }) => {
-      const result = wrap(() => service.getRevisionsByTicket(project_id, ticket_id));
-      service.notifyTicketView(project_id, ticket_id, agentId);
-      return result;
-    });
+    async ({ project_id, ticket_id }) =>
+      wrap(() => service.getRevisionsByTicket(project_id, ticket_id, agentId)));
 
   // --- Agents ---
   mcp.tool('list_agents', 'List all registered agents', {},
