@@ -323,7 +323,7 @@ function createTicketCard(ticket) {
   const isDone = ticket.column === 'done';
 
   card.innerHTML = `
-    <div class="ticket-id">#${ticket.id.slice(0, 8)}</div>
+    <div class="ticket-id" title="Click to copy" onclick="event.stopPropagation(); copyTicketId('${ticket.id.slice(0, 8)}', this)">#${ticket.id.slice(0, 8)}</div>
     <div class="ticket-title">${escapeHtml(ticket.title)}</div>
     ${ticket.description ? `<div class="ticket-desc">${escapeHtml(ticket.description)}</div>` : ''}
     <div class="ticket-meta">
@@ -464,7 +464,10 @@ async function openModal(projectId, ticketId) {
   currentModalTicket = ticket;
 
   // Header
-  document.getElementById('modal-ticket-id').textContent = `#${ticket.id.slice(0, 8)}`;
+  const modalIdEl = document.getElementById('modal-ticket-id');
+  modalIdEl.textContent = `#${ticket.id.slice(0, 8)}`;
+  modalIdEl.title = 'Click to copy';
+  modalIdEl.onclick = () => copyTicketId(ticket.id.slice(0, 8), modalIdEl);
   const badge = document.getElementById('modal-column-badge');
   badge.textContent = ticket.column.replace(/_/g, ' ');
   badge.className = 'modal-column-badge ' + ticket.column;
@@ -608,9 +611,22 @@ function copyApiKey(btn, key) {
   });
 }
 
+function copyTicketId(shortId, el) {
+  navigator.clipboard.writeText('#' + shortId).then(() => {
+    const original = el.textContent;
+    el.textContent = 'Copied!';
+    el.classList.add('copied');
+    setTimeout(() => {
+      el.textContent = original;
+      el.classList.remove('copied');
+    }, 1200);
+  });
+}
+
 window.openAgentsModal = openAgentsModal;
 window.closeAgentsModal = closeAgentsModal;
 window.copyApiKey = copyApiKey;
+window.copyTicketId = copyTicketId;
 
 // ---------------------------------------------------------------------------
 // Agent viewing indicator (shows which agents are reading a ticket)

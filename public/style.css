@@ -394,6 +394,17 @@ select:focus {
   font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
   font-weight: 500;
   opacity: 0.7;
+  cursor: pointer;
+  display: inline-block;
+  transition: opacity 0.2s, color 0.2s;
+}
+.ticket-id:hover {
+  opacity: 1;
+  color: var(--accent);
+}
+.ticket-id.copied {
+  color: #4ade80;
+  opacity: 1;
 }
 
 .ticket-title {
@@ -935,6 +946,16 @@ select:focus {
   color: var(--text-dim);
   font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
   opacity: 0.7;
+  cursor: pointer;
+  transition: opacity 0.2s, color 0.2s;
+}
+.modal-ticket-id:hover {
+  opacity: 1;
+  color: var(--accent);
+}
+.modal-ticket-id.copied {
+  color: #4ade80;
+  opacity: 1;
 }
 
 .modal-column-badge {

@@ -379,9 +379,21 @@ export class AgentboardDB {
   }
 
   getTicket(projectId: string, ticketId: string): Ticket | undefined {
-    const row = this.db
+    // Strip leading '#' (frontend short-ID format)
+    const cleanId = ticketId.replace(/^#/, '');
+
+    // Try exact match first
+    let row = this.db
       .prepare('SELECT * FROM tickets WHERE id = ? AND project_id = ?')
-      .get(ticketId, projectId) as TicketRow | undefined;
+      .get(cleanId, projectId) as TicketRow | undefined;
+
+    // Fallback: prefix match for short IDs (e.g. "df69fbfa" → first 8 chars of UUID)
+    if (!row && cleanId.length < 36) {
+      const rows = this.db
+        .prepare('SELECT * FROM tickets WHERE id LIKE ? AND project_id = ?')
+        .all(cleanId + '%', projectId) as TicketRow[];
+      if (rows.length === 1) row = rows[0];
+    }
 
     return row !== undefined ? this.mapTicketRow(row) : undefined;
   }

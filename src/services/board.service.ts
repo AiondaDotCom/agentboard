@@ -197,9 +197,9 @@ export class BoardService {
     const ticket = this.db.getTicket(projectId, ticketId);
     if (!ticket) throw new NotFoundError('Ticket not found');
     if (viewerAgentId) {
-      this.notifyTicketView(projectId, ticketId, viewerAgentId);
+      this.notifyTicketView(projectId, ticket.id, viewerAgentId);
       this.audit(viewerAgentId, 'READ', `ticket '${ticket.title}'`, `in project ${projectId}`);
-      this.logAndPublishActivity(viewerAgentId, projectId, ticketId, 'ticket_read', `Read ticket "${ticket.title}"`);
+      this.logAndPublishActivity(viewerAgentId, projectId, ticket.id, 'ticket_read', `Read ticket "${ticket.title}"`);
     }
     return ticket;
   }
@@ -221,7 +221,7 @@ export class BoardService {
     updates: { title?: string; description?: string; column?: string },
     actorId?: string | null,
   ): Ticket {
-    this.requireTicket(projectId, ticketId);
+    const resolved = this.requireTicket(projectId, ticketId);
 
     if (updates.title !== undefined && (typeof updates.title !== 'string' || updates.title.trim().length === 0)) {
       throw new ValidationError('Invalid "title" field');
@@ -238,7 +238,7 @@ export class BoardService {
     if (typeof updates.description === 'string') cleanUpdates.description = updates.description;
     if (isValidColumn(updates.column)) cleanUpdates.column = updates.column;
 
-    const ticket = this.db.updateTicket(projectId, ticketId, cleanUpdates, actorId ?? null);
+    const ticket = this.db.updateTicket(projectId, resolved.id, cleanUpdates, actorId ?? null);
     if (!ticket) throw new NotFoundError('Ticket not found');
 
     this.db.logActivity(actorId ?? null, ticket.id, 'ticket_updated', 'Updated ticket');
@@ -258,13 +258,13 @@ export class BoardService {
     column: string,
     actorId?: string | null,
   ): Ticket {
-    this.requireTicket(projectId, ticketId);
+    const resolved = this.requireTicket(projectId, ticketId);
 
     if (!isValidColumn(column)) {
       throw new ValidationError(`Invalid or missing column value: "${column}"`);
     }
 
-    const ticket = this.db.moveTicket(projectId, ticketId, column, actorId ?? null);
+    const ticket = this.db.moveTicket(projectId, resolved.id, column, actorId ?? null);
     if (!ticket) throw new NotFoundError('Ticket not found');
 
     this.db.logActivity(actorId ?? null, ticket.id, 'ticket_moved', `Moved to ${column}`);
@@ -280,7 +280,7 @@ export class BoardService {
 
   deleteTicket(projectId: string, ticketId: string, actorId?: string | null): void {
     const ticket = this.requireTicket(projectId, ticketId);
-    this.db.deleteTicket(projectId, ticketId);
+    this.db.deleteTicket(projectId, ticket.id);
     pubsub.publish(EVENTS.TICKET_DELETED, {
       ticketDeleted: ticket,
       projectId,
@@ -289,9 +289,9 @@ export class BoardService {
   }
 
   closeTicket(projectId: string, ticketId: string): Ticket {
-    this.requireTicket(projectId, ticketId);
+    const resolved = this.requireTicket(projectId, ticketId);
 
-    const ticket = this.db.moveTicket(projectId, ticketId, 'done', null);
+    const ticket = this.db.moveTicket(projectId, resolved.id, 'done', null);
     if (!ticket) throw new NotFoundError('Ticket not found');
 
     this.db.logActivity(null, ticket.id, 'ticket_moved', 'Human closed \u2192 done');
@@ -305,9 +305,9 @@ export class BoardService {
   }
 
   openTicket(projectId: string, ticketId: string): Ticket {
-    this.requireTicket(projectId, ticketId);
+    const resolved = this.requireTicket(projectId, ticketId);
 
-    const ticket = this.db.moveTicket(projectId, ticketId, 'backlog', null);
+    const ticket = this.db.moveTicket(projectId, resolved.id, 'backlog', null);
     if (!ticket) throw new NotFoundError('Ticket not found');
 
     this.db.logActivity(null, ticket.id, 'ticket_moved', 'Human reopened \u2192 backlog');
@@ -330,17 +330,17 @@ export class BoardService {
     agentId: string,
     body: string,
   ): Comment {
-    this.requireTicket(projectId, ticketId);
+    const resolved = this.requireTicket(projectId, ticketId);
 
     if (typeof body !== 'string' || body.trim().length === 0) {
       throw new ValidationError('Missing or invalid "body" field');
     }
 
-    const comment = this.db.createComment(ticketId, agentId, body.trim());
+    const comment = this.db.createComment(resolved.id, agentId, body.trim());
 
     const activity = this.db.logActivity(
       agentId,
-      ticketId,
+      resolved.id,
       'comment_added',
       `Comment: ${body.trim()}`,
     );
@@ -350,18 +350,18 @@ export class BoardService {
       projectId,
     });
 
-    this.audit(agentId, 'COMMENT', `ticket '${ticketId}'`, body.trim());
+    this.audit(agentId, 'COMMENT', `ticket '${resolved.id}'`, body.trim());
     return comment;
   }
 
   getCommentsByTicket(projectId: string, ticketId: string, viewerAgentId?: string | null): Comment[] {
-    this.requireTicket(projectId, ticketId);
+    const resolved = this.requireTicket(projectId, ticketId);
     if (viewerAgentId) {
-      this.notifyTicketView(projectId, ticketId, viewerAgentId);
-      this.audit(viewerAgentId, 'READ', `comments on ticket '${ticketId}'`);
-      this.logAndPublishActivity(viewerAgentId, projectId, ticketId, 'comments_read', 'Read comments');
+      this.notifyTicketView(projectId, resolved.id, viewerAgentId);
+      this.audit(viewerAgentId, 'READ', `comments on ticket '${resolved.id}'`);
+      this.logAndPublishActivity(viewerAgentId, projectId, resolved.id, 'comments_read', 'Read comments');
     }
-    return this.db.getCommentsByTicket(ticketId);
+    return this.db.getCommentsByTicket(resolved.id);
   }
 
   // -------------------------------------------------------------------------
@@ -369,13 +369,13 @@ export class BoardService {
   // -------------------------------------------------------------------------
 
   getRevisionsByTicket(projectId: string, ticketId: string, viewerAgentId?: string | null): TicketRevision[] {
-    this.requireTicket(projectId, ticketId);
+    const resolved = this.requireTicket(projectId, ticketId);
     if (viewerAgentId) {
-      this.notifyTicketView(projectId, ticketId, viewerAgentId);
-      this.audit(viewerAgentId, 'READ', `history of ticket '${ticketId}'`);
-      this.logAndPublishActivity(viewerAgentId, projectId, ticketId, 'history_read', 'Read ticket history');
+      this.notifyTicketView(projectId, resolved.id, viewerAgentId);
+      this.audit(viewerAgentId, 'READ', `history of ticket '${resolved.id}'`);
+      this.logAndPublishActivity(viewerAgentId, projectId, resolved.id, 'history_read', 'Read ticket history');
     }
-    return this.db.getRevisionsByTicket(ticketId);
+    return this.db.getRevisionsByTicket(resolved.id);
   }
 
   // -------------------------------------------------------------------------
