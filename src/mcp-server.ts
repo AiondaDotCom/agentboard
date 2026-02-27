@@ -57,19 +57,19 @@ export function registerMcpTools(
     async ({ project_id, ticket_id }) =>
       wrap(() => service.getTicket(project_id, ticket_id, agentId)));
 
-  mcp.tool('create_ticket', 'Create a new ticket in a project', {
+  mcp.tool('create_ticket', 'Create a new ticket in a project. Descriptions support Markdown formatting (bold, lists, headings, code blocks, etc.) – please use Markdown for better readability.', {
     project_id: z.string().describe('Project ID'),
     title: z.string().describe('Ticket title'),
-    description: z.string().optional().describe('Ticket description'),
+    description: z.string().optional().describe('Ticket description (supports Markdown: **bold**, *italic*, - lists, ## headings, `code`, etc.)'),
     column: z.enum(['backlog', 'ready', 'in_progress', 'in_review', 'done']).optional().describe('Initial column (default: backlog)'),
   }, async ({ project_id, title, description, column }) =>
     wrap(() => service.createTicket(project_id, title, description, column, agentId)));
 
-  mcp.tool('update_ticket', 'Update a ticket (title, description, or column)', {
+  mcp.tool('update_ticket', 'Update a ticket (title, description, or column). Descriptions support Markdown formatting.', {
     project_id: z.string().describe('Project ID'),
     ticket_id: z.string().describe('Ticket ID'),
     title: z.string().optional().describe('New title'),
-    description: z.string().optional().describe('New description'),
+    description: z.string().optional().describe('New description (supports Markdown: **bold**, *italic*, - lists, ## headings, `code`, etc.)'),
     column: z.enum(['backlog', 'ready', 'in_progress', 'in_review', 'done']).optional().describe('New column'),
   }, async ({ project_id, ticket_id, title, description, column }) => {
     const updates: { title?: string; description?: string; column?: string } = {};
@@ -102,10 +102,10 @@ export function registerMcpTools(
     async ({ project_id, ticket_id }) => wrap(() => { service.deleteTicket(project_id, ticket_id, agentId); return { deleted: true }; }));
 
   // --- Comments ---
-  mcp.tool('add_comment', 'Add a comment to a ticket', {
+  mcp.tool('add_comment', 'Add a comment to a ticket. Comments support Markdown formatting for better readability.', {
     project_id: z.string().describe('Project ID'),
     ticket_id: z.string().describe('Ticket ID'),
-    body: z.string().describe('Comment text'),
+    body: z.string().describe('Comment text (supports Markdown: **bold**, *italic*, - lists, `code`, etc.)'),
   }, async ({ project_id, ticket_id, body }) =>
     wrap(() => service.createComment(project_id, ticket_id, agentId, body)));
 

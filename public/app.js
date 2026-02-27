@@ -490,8 +490,8 @@ async function openModal(projectId, ticketId) {
     assigneeSelect.appendChild(opt);
   });
 
-  // Description (monospace, preserves ASCII art)
-  document.getElementById('modal-desc').textContent = ticket.description || '';
+  // Description (Markdown rendered, monospace font for ASCII art)
+  document.getElementById('modal-desc').innerHTML = renderMarkdown(ticket.description || '');
 
   // Comments
   const commentsEl = document.getElementById('modal-comments');
@@ -508,7 +508,7 @@ async function openModal(projectId, ticketId) {
           <span class="modal-comment-agent">\u{1f916} ${escapeHtml(a.name)}</span>
           <span class="modal-comment-time">${formatTime(c.createdAt)}</span>
         </div>
-        <div class="modal-comment-body">${escapeHtml(c.body)}</div>
+        <div class="modal-comment-body markdown-body">${renderMarkdown(c.body)}</div>
       `;
       commentsEl.appendChild(div);
     });
@@ -874,6 +874,14 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+function renderMarkdown(text) {
+  if (!text) return '';
+  if (typeof marked !== 'undefined' && marked.parse) {
+    return marked.parse(text, { breaks: true });
+  }
+  return escapeHtml(text);
 }
 
 function formatTime(timestamp) {

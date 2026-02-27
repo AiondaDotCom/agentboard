@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Agentboard</title>
   <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
   <header>
@@ -125,7 +126,7 @@
           </select>
         </div>
       </div>
-      <pre id="modal-desc" class="modal-desc"></pre>
+      <div id="modal-desc" class="modal-desc markdown-body"></div>
 
       <div class="modal-tabs">
         <button class="modal-tab active" data-tab="comments" onclick="switchTab('comments')">Comments</button>
