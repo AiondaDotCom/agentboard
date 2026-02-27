@@ -479,16 +479,14 @@ async function openModal(projectId, ticketId) {
   const author = ticket.agentId ? (agents[ticket.agentId] || { name: '???' }) : null;
   document.getElementById('modal-author').textContent = author ? `\u{270d}\u{fe0f} Author: ${author.name}` : '';
 
-  // Assignee dropdown
-  const assigneeSelect = document.getElementById('modal-assignee-select');
-  assigneeSelect.innerHTML = '<option value="">Unassigned</option>';
-  Object.values(agents).forEach(a => {
-    const opt = document.createElement('option');
-    opt.value = a.id;
-    opt.textContent = a.name;
-    if (ticket.assigneeId === a.id) opt.selected = true;
-    assigneeSelect.appendChild(opt);
-  });
+  // Assignee display (read-only, agents assign themselves via API)
+  const assigneeDisplay = document.getElementById('modal-assignee-display');
+  if (ticket.assigneeId) {
+    const assignee = agents[ticket.assigneeId] || { name: '???' };
+    assigneeDisplay.textContent = `\u{1f527} Assigned: ${assignee.name}`;
+  } else {
+    assigneeDisplay.textContent = '';
+  }
 
   // Description (Markdown rendered, monospace font for ASCII art)
   document.getElementById('modal-desc').innerHTML = renderMarkdown(ticket.description || '');
@@ -567,28 +565,9 @@ function switchTab(tabName) {
   });
 }
 
-async function handleAssigneeChange(select) {
-  if (!currentModalTicket) return;
-  const { projectId, id: ticketId } = currentModalTicket;
-  const assigneeId = select.value || null;
-
-  try {
-    const ticket = await postJSON(
-      `/api/projects/${projectId}/tickets/${ticketId}/assign`,
-      { assignee_id: assigneeId },
-    );
-    currentModalTicket = ticket;
-  } catch (err) {
-    console.error('[agentboard] assign failed:', err);
-    // revert select
-    select.value = currentModalTicket.assigneeId || '';
-  }
-}
-
 window.openModal = openModal;
 window.closeModal = closeModal;
 window.switchTab = switchTab;
-window.handleAssigneeChange = handleAssigneeChange;
 
 // ---------------------------------------------------------------------------
 // Agents Modal (show API keys)

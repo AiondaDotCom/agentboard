@@ -1021,33 +1021,10 @@ select:focus {
   font-weight: 500;
 }
 
-.modal-assignee-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-
-.modal-assignee-label {
+.modal-assignee-display {
   color: var(--text-dim);
+  font-size: 13px;
   font-weight: 500;
-}
-
-.modal-assignee-select {
-  background: var(--glass);
-  color: var(--text);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-sm);
-  padding: 4px 8px;
-  font-size: 12px;
-  font-family: inherit;
-  cursor: pointer;
-  transition: border-color 0.2s;
-}
-.modal-assignee-select:hover,
-.modal-assignee-select:focus {
-  border-color: var(--accent);
-  outline: none;
 }
 
 .modal-desc {
