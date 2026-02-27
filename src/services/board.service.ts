@@ -403,6 +403,11 @@ export class BoardService {
       projectId,
     });
 
+    pubsub.publish(EVENTS.COMMENT_ADDED, {
+      commentAdded: comment,
+      projectId,
+    });
+
     this.audit(agentId, 'COMMENT', `ticket '${resolved.id}'`, body.trim());
     return comment;
   }

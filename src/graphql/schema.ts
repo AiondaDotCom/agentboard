@@ -82,6 +82,7 @@ export const typeDefs = gql`
     ticketMoved(projectId: ID!): Ticket!
     ticketDeleted(projectId: ID!): Ticket!
     activityAdded(projectId: ID!): Activity!
+    commentAdded(projectId: ID!): Comment!
     agentChanged: Agent!
     projectChanged: Project!
     ticketViewed(projectId: ID!): TicketViewEvent!

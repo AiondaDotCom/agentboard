@@ -57,6 +57,7 @@ export interface Ticket {
   position: number;
   agentId: string | null;
   assigneeId: string | null;
+  commentCount: number;
   createdAt: string;
   updatedAt: string;
 }

@@ -445,6 +445,13 @@ select:focus {
   font-weight: 600;
 }
 
+.ticket-comment-count {
+  color: var(--text-dim);
+  font-weight: 500;
+  opacity: 0.8;
+  margin-left: auto;
+}
+
 .ticket-actions {
   display: flex;
   gap: 6px;
@@ -1203,6 +1210,15 @@ select:focus {
   color: var(--text);
   line-height: 1.5;
   word-break: break-word;
+}
+
+.modal-comment-new {
+  animation: commentSlideIn 0.3s ease-out;
+}
+
+@keyframes commentSlideIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .modal-empty {

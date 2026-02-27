@@ -330,6 +330,7 @@ function createTicketCard(ticket) {
     <div class="ticket-meta">
       ${author ? `<span class="ticket-agent" title="Author">&#x270d;&#xfe0f; ${escapeHtml(author.name)}</span>` : '<span></span>'}
       ${assignee ? `<span class="ticket-assignee" title="Assigned to">&#x1f527; ${escapeHtml(assignee.name)}</span>` : ''}
+      ${ticket.commentCount > 0 ? `<span class="ticket-comment-count" title="${ticket.commentCount} comment${ticket.commentCount !== 1 ? 's' : ''}">&#x1f4ac; ${ticket.commentCount}</span>` : ''}
     </div>
     <div class="ticket-actions">
       ${isDone
@@ -565,6 +566,36 @@ function switchTab(tabName) {
   });
 }
 
+function handleCommentAdded(data) {
+  const comment = data.commentAdded;
+  if (!comment) return;
+
+  // Reload board to update comment count badges
+  if (currentProjectId) loadBoard(currentProjectId);
+
+  // If the modal is open for this ticket, prepend the new comment in realtime
+  if (currentModalTicket && currentModalTicket.id === comment.ticketId) {
+    const commentsEl = document.getElementById('modal-comments');
+    // Remove "No comments yet." placeholder if present
+    const emptyMsg = commentsEl.querySelector('.modal-empty');
+    if (emptyMsg) emptyMsg.remove();
+
+    const agent = comment.agent || { name: '???' };
+    const div = document.createElement('div');
+    div.className = 'modal-comment modal-comment-new';
+    div.innerHTML = `
+      <div class="modal-comment-header">
+        <span class="modal-comment-agent">\u{1f916} ${escapeHtml(agent.name)}</span>
+        <span class="modal-comment-time">${formatTime(comment.createdAt)}</span>
+      </div>
+      <div class="modal-comment-body markdown-body">${renderMarkdown(comment.body)}</div>
+    `;
+    // Newest first – prepend
+    commentsEl.insertBefore(div, commentsEl.firstChild);
+    div.addEventListener('animationend', () => div.classList.remove('modal-comment-new'), { once: true });
+  }
+}
+
 window.openModal = openModal;
 window.closeModal = closeModal;
 window.switchTab = switchTab;
@@ -751,6 +782,7 @@ function connectWebSocket(projectId) {
         subscribe(socket, '4', 'activityAdded', projectId);
         subscribe(socket, '5', 'ticketDeleted', projectId);
         subscribe(socket, '8', 'ticketViewed', projectId);
+        subscribe(socket, '10', 'commentAdded', projectId);
       }
     }
 
@@ -785,6 +817,8 @@ function subscribe(socket, id, eventName, projectId) {
     query = `subscription { ${eventName}(projectId: "${projectId}") { id agentId agent { id name } ticketId action details timestamp } }`;
   } else if (eventName === 'ticketViewed') {
     query = `subscription { ${eventName}(projectId: "${projectId}") { ticketId projectId agentId agentName } }`;
+  } else if (eventName === 'commentAdded') {
+    query = `subscription { ${eventName}(projectId: "${projectId}") { id ticketId agent { id name } body createdAt } }`;
   } else {
     query = `subscription { ${eventName}(projectId: "${projectId}") { id projectId title description column position agentId assigneeId agent { id name } assignee { id name } createdAt updatedAt } }`;
   }
@@ -842,6 +876,11 @@ function handleSubscriptionEvent(subId, data) {
   // Ticket viewed → show agent viewing indicator
   if (subId === '8') {
     handleTicketViewed(data);
+  }
+
+  // Comment added → refresh modal if open for that ticket + reload board for comment count
+  if (subId === '10') {
+    handleCommentAdded(data);
   }
 }
 

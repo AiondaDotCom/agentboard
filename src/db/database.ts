@@ -48,6 +48,7 @@ interface TicketRow {
   position: number;
   agent_id: string | null;
   assignee_id: string | null;
+  comment_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -158,6 +159,7 @@ export class AgentboardDB {
       position: row.position,
       agentId: row.agent_id,
       assigneeId: row.assignee_id ?? null,
+      commentCount: row.comment_count ?? 0,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -374,7 +376,7 @@ export class AgentboardDB {
     stmt.run(id, projectId, title, desc, col, position, agent);
 
     const row = this.db
-      .prepare('SELECT * FROM tickets WHERE id = ?')
+      .prepare('SELECT t.*, (SELECT COUNT(*) FROM comments c WHERE c.ticket_id = t.id) AS comment_count FROM tickets t WHERE t.id = ?')
       .get(id) as TicketRow;
 
     return this.mapTicketRow(row);
@@ -386,13 +388,13 @@ export class AgentboardDB {
 
     // Try exact match first
     let row = this.db
-      .prepare('SELECT * FROM tickets WHERE id = ? AND project_id = ?')
+      .prepare('SELECT t.*, (SELECT COUNT(*) FROM comments c WHERE c.ticket_id = t.id) AS comment_count FROM tickets t WHERE t.id = ? AND t.project_id = ?')
       .get(cleanId, projectId) as TicketRow | undefined;
 
     // Fallback: prefix match for short IDs (e.g. "df69fbfa" → first 8 chars of UUID)
     if (!row && cleanId.length < 36) {
       const rows = this.db
-        .prepare('SELECT * FROM tickets WHERE id LIKE ? AND project_id = ?')
+        .prepare('SELECT t.*, (SELECT COUNT(*) FROM comments c WHERE c.ticket_id = t.id) AS comment_count FROM tickets t WHERE t.id LIKE ? AND t.project_id = ?')
         .all(cleanId + '%', projectId) as TicketRow[];
       if (rows.length === 1) row = rows[0];
     }
@@ -403,7 +405,8 @@ export class AgentboardDB {
   getTicketsByProject(projectId: string): Ticket[] {
     const rows = this.db
       .prepare(
-        'SELECT * FROM tickets WHERE project_id = ? ORDER BY column_name, position ASC',
+        `SELECT t.*, (SELECT COUNT(*) FROM comments c WHERE c.ticket_id = t.id) AS comment_count
+         FROM tickets t WHERE t.project_id = ? ORDER BY t.column_name, t.position ASC`,
       )
       .all(projectId) as TicketRow[];
 
