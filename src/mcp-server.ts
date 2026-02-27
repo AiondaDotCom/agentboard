@@ -48,9 +48,12 @@ export function registerMcpTools(
     async ({ project_id }) => wrap(() => { service.deleteProject(project_id, agentId); return { deleted: true }; }));
 
   // --- Tickets ---
-  mcp.tool('list_tickets', 'List all tickets in a project',
+  mcp.tool('list_tickets', 'List all tickets in a project (returns summary without description – use get_ticket for full details)',
     { project_id: z.string().describe('Project ID') },
-    async ({ project_id }) => wrap(() => service.getTicketsByProject(project_id, agentId)));
+    async ({ project_id }) => wrap(() => {
+      const tickets = service.getTicketsByProject(project_id, agentId);
+      return tickets.map(({ description, ...rest }) => rest);
+    }));
 
   mcp.tool('get_ticket', 'Get details of a specific ticket including description',
     { project_id: z.string().describe('Project ID'), ticket_id: z.string().describe('Ticket ID') },
