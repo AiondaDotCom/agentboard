@@ -177,8 +177,16 @@ async function loadAgents() {
 }
 
 async function loadBoard(projectId) {
-  const result = await fetchJSON(`/api/projects/${projectId}/tickets`);
-  renderBoard(result.data);
+  // Fetch all pages to ensure every column is populated
+  let allTickets = [];
+  let page = 1;
+  while (true) {
+    const result = await fetchJSON(`/api/projects/${projectId}/tickets?per_page=100&page=${page}`);
+    allTickets = allTickets.concat(result.data);
+    if (page >= result.total_pages) break;
+    page++;
+  }
+  renderBoard(allTickets);
   // Update snapshot after render so next diff works
   prevTicketState = snapshotTicketPositions();
 }
