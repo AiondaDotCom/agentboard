@@ -144,6 +144,7 @@ async function loadProjectOverview() {
       tr.innerHTML = `
         <td>
           <div class="overview-project-name">${escapeHtml(p.name)}</div>
+          <div class="overview-project-id" title="Click to copy full ID" onclick="event.stopPropagation(); copyId('${p.id}', this)">#${p.id.slice(0, 8)}</div>
           ${p.description ? `<div class="overview-project-desc">${escapeHtml(p.description)}</div>` : ''}
         </td>
         ${cols.map(c => cell(stats[c], c)).join('')}
@@ -324,7 +325,7 @@ function createTicketCard(ticket) {
   const isDone = ticket.column === 'done';
 
   card.innerHTML = `
-    <div class="ticket-id" title="Click to copy" onclick="event.stopPropagation(); copyTicketId('${ticket.id.slice(0, 8)}', this)">#${ticket.id.slice(0, 8)}</div>
+    <div class="ticket-id" title="Click to copy full ID" onclick="event.stopPropagation(); copyId('${ticket.id}', this)">#${ticket.id.slice(0, 8)}</div>
     <div class="ticket-title">${escapeHtml(ticket.title)}</div>
     ${ticket.description ? `<div class="ticket-desc">${escapeHtml(ticket.description)}</div>` : ''}
     <div class="ticket-meta">
@@ -469,8 +470,8 @@ async function openModal(projectId, ticketId) {
   // Header
   const modalIdEl = document.getElementById('modal-ticket-id');
   modalIdEl.textContent = `#${ticket.id.slice(0, 8)}`;
-  modalIdEl.title = 'Click to copy';
-  modalIdEl.onclick = () => copyTicketId(ticket.id.slice(0, 8), modalIdEl);
+  modalIdEl.title = 'Click to copy full ID';
+  modalIdEl.onclick = () => copyId(ticket.id, modalIdEl);
   const badge = document.getElementById('modal-column-badge');
   badge.textContent = ticket.column.replace(/_/g, ' ');
   badge.className = 'modal-column-badge ' + ticket.column;
@@ -653,8 +654,8 @@ function copyApiKey(btn, key) {
   });
 }
 
-function copyTicketId(shortId, el) {
-  navigator.clipboard.writeText('#' + shortId).then(() => {
+function copyId(fullId, el) {
+  navigator.clipboard.writeText(fullId).then(() => {
     const original = el.textContent;
     el.textContent = 'Copied!';
     el.classList.add('copied');
@@ -668,7 +669,7 @@ function copyTicketId(shortId, el) {
 window.openAgentsModal = openAgentsModal;
 window.closeAgentsModal = closeAgentsModal;
 window.copyApiKey = copyApiKey;
-window.copyTicketId = copyTicketId;
+window.copyId = copyId;
 
 // ---------------------------------------------------------------------------
 // Agent viewing indicator (shows which agents are reading a ticket)
