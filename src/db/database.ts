@@ -407,7 +407,7 @@ export class AgentboardDB {
   getTicketsByProject(projectId: string, options?: TicketListOptions): PaginatedResult<Ticket> {
     const column = options?.column;
     const page = Math.max(1, options?.page ?? 1);
-    const perPage = Math.min(100, Math.max(1, options?.per_page ?? 50));
+    const perPage = Math.max(1, options?.per_page ?? 50);
     const offset = (page - 1) * perPage;
 
     const whereClauses = ['t.project_id = ?'];
