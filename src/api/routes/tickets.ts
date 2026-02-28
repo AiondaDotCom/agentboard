@@ -37,11 +37,14 @@ export function createTicketRoutes(service: BoardService): Router {
     }
   });
 
-  // GET /api/projects/:id/tickets
+  // GET /api/projects/:id/tickets?column=in_review&page=1&per_page=20
   router.get('/tickets', (req: Request, res: Response): void => {
     try {
       const projectId = String(req.params['id'] ?? '');
-      res.json(service.getTicketsByProject(projectId));
+      const column = typeof req.query['column'] === 'string' ? req.query['column'] : undefined;
+      const page = req.query['page'] ? Number(req.query['page']) : undefined;
+      const perPage = req.query['per_page'] ? Number(req.query['per_page']) : undefined;
+      res.json(service.getTicketsByProject(projectId, null, { column: column as any, page, per_page: perPage }));
     } catch (err) {
       handleServiceError(res, err);
     }

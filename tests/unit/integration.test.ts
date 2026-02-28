@@ -197,7 +197,9 @@ describe('Integration: Full API Workflow', () => {
     const res = await request(app).get(`/api/projects/${projectId}/tickets`);
 
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(3);
+    expect(res.body.data).toHaveLength(3);
+    expect(res.body.total).toBe(3);
+    expect(res.body.page).toBe(1);
   });
 
   // -------------------------------------------------------------------------
@@ -388,7 +390,8 @@ describe('Integration: Full API Workflow', () => {
     const res = await request(app).get(`/api/projects/${projectId}/tickets`);
 
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(2);
+    expect(res.body.data).toHaveLength(2);
+    expect(res.body.total).toBe(2);
   });
 
   // -------------------------------------------------------------------------

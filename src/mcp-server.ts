@@ -49,10 +49,18 @@ export function registerMcpTools(
 
   // --- Tickets ---
   mcp.tool('list_tickets', 'List all tickets in a project (returns summary without description – use get_ticket for full details)',
-    { project_id: z.string().describe('Project ID') },
-    async ({ project_id }) => wrap(() => {
-      const tickets = service.getTicketsByProject(project_id, agentId);
-      return tickets.map(({ description, ...rest }) => rest);
+    {
+      project_id: z.string().describe('Project ID'),
+      column: z.enum(['backlog', 'ready', 'in_progress', 'in_review', 'done']).optional().describe('Filter by column (e.g. in_review, done)'),
+      page: z.number().int().min(1).optional().describe('Page number (default: 1)'),
+      per_page: z.number().int().min(1).max(100).optional().describe('Items per page (default: 50, max: 100)'),
+    },
+    async ({ project_id, column, page, per_page }) => wrap(() => {
+      const result = service.getTicketsByProject(project_id, agentId, { column, page, per_page });
+      return {
+        ...result,
+        data: result.data.map(({ description, ...rest }) => rest),
+      };
     }));
 
   mcp.tool('get_ticket', 'Get details of a specific ticket including description',

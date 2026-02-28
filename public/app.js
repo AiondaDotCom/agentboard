@@ -177,8 +177,8 @@ async function loadAgents() {
 }
 
 async function loadBoard(projectId) {
-  const tickets = await fetchJSON(`/api/projects/${projectId}/tickets`);
-  renderBoard(tickets);
+  const result = await fetchJSON(`/api/projects/${projectId}/tickets`);
+  renderBoard(result.data);
   // Update snapshot after render so next diff works
   prevTicketState = snapshotTicketPositions();
 }

@@ -18,7 +18,7 @@ export function createResolvers(db: AgentboardDB): Record<string, unknown> {
       agents: (): ReturnType<typeof db.getAllAgents> => db.getAllAgents(),
     },
     Project: {
-      tickets: (parent: { id: string }): ReturnType<typeof db.getTicketsByProject> => db.getTicketsByProject(parent.id),
+      tickets: (parent: { id: string }): import('../types.js').Ticket[] => db.getTicketsByProject(parent.id).data,
     },
     Ticket: {
       agent: (parent: { agentId: string | null }): ReturnType<typeof db.getAgentById> | null => {

@@ -104,7 +104,7 @@ describe('AgentboardDB', () => {
       const project = db.createProject('p1');
       db.createTicket(project.id, 'ticket1');
       db.deleteProject(project.id);
-      expect(db.getTicketsByProject(project.id)).toHaveLength(0);
+      expect(db.getTicketsByProject(project.id).data).toHaveLength(0);
     });
   });
 
@@ -155,8 +155,10 @@ describe('AgentboardDB', () => {
     it('should list tickets by project', () => {
       db.createTicket(projectId, 'T1');
       db.createTicket(projectId, 'T2');
-      const tickets = db.getTicketsByProject(projectId);
-      expect(tickets).toHaveLength(2);
+      const result = db.getTicketsByProject(projectId);
+      expect(result.data).toHaveLength(2);
+      expect(result.total).toBe(2);
+      expect(result.page).toBe(1);
     });
 
     it('should update ticket fields', () => {

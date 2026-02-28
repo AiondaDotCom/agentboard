@@ -28,6 +28,29 @@ export function isValidColumn(value: unknown): value is Column {
 }
 
 // ---------------------------------------------------------------------------
+// Query options
+// ---------------------------------------------------------------------------
+
+/** Filter & pagination options for listing tickets. */
+export interface TicketListOptions {
+  /** Filter by column (e.g. 'in_review', 'done'). */
+  column?: Column | undefined;
+  /** Page number (1-based). Default: 1. */
+  page?: number | undefined;
+  /** Items per page. Default: 50. */
+  per_page?: number | undefined;
+}
+
+/** Paginated result wrapper. */
+export interface PaginatedResult<T> {
+  data: T[];
+  total: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
+}
+
+// ---------------------------------------------------------------------------
 // Domain entities
 // ---------------------------------------------------------------------------
 

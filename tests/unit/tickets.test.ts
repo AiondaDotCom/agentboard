@@ -94,7 +94,9 @@ describe('Ticket Routes', () => {
       await request(app).post(`/api/projects/${projectId}/tickets`).set('X-Api-Key', apiKey).send({ title: 'T2' });
       const res = await request(app).get(`/api/projects/${projectId}/tickets`);
       expect(res.status).toBe(200);
-      expect(res.body).toHaveLength(2);
+      expect(res.body.data).toHaveLength(2);
+      expect(res.body.total).toBe(2);
+      expect(res.body.page).toBe(1);
     });
 
     it('should return 404 for nonexistent project', async () => {

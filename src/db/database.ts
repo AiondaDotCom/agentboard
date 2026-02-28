@@ -19,6 +19,8 @@ import type {
   AuditEntry,
   TicketRevision,
   Column,
+  TicketListOptions,
+  PaginatedResult,
 } from '../types.js';
 
 // ---------------------------------------------------------------------------
@@ -402,15 +404,41 @@ export class AgentboardDB {
     return row !== undefined ? this.mapTicketRow(row) : undefined;
   }
 
-  getTicketsByProject(projectId: string): Ticket[] {
+  getTicketsByProject(projectId: string, options?: TicketListOptions): PaginatedResult<Ticket> {
+    const column = options?.column;
+    const page = Math.max(1, options?.page ?? 1);
+    const perPage = Math.min(100, Math.max(1, options?.per_page ?? 50));
+    const offset = (page - 1) * perPage;
+
+    const whereClauses = ['t.project_id = ?'];
+    const params: (string | number)[] = [projectId];
+
+    if (column) {
+      whereClauses.push('t.column_name = ?');
+      params.push(column);
+    }
+
+    const where = whereClauses.join(' AND ');
+
+    const countRow = this.db
+      .prepare(`SELECT COUNT(*) AS cnt FROM tickets t WHERE ${where}`)
+      .get(...params) as { cnt: number };
+    const total = countRow.cnt;
+
     const rows = this.db
       .prepare(
         `SELECT t.*, (SELECT COUNT(*) FROM comments c WHERE c.ticket_id = t.id) AS comment_count
-         FROM tickets t WHERE t.project_id = ? ORDER BY t.column_name, t.position ASC`,
+         FROM tickets t WHERE ${where} ORDER BY t.column_name, t.position ASC LIMIT ? OFFSET ?`,
       )
-      .all(projectId) as TicketRow[];
+      .all(...params, perPage, offset) as TicketRow[];
 
-    return rows.map((r) => this.mapTicketRow(r));
+    return {
+      data: rows.map((r) => this.mapTicketRow(r)),
+      total,
+      page,
+      per_page: perPage,
+      total_pages: Math.ceil(total / perPage),
+    };
   }
 
   updateTicket(

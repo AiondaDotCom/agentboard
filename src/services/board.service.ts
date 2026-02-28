@@ -20,6 +20,8 @@ import type {
   AuditEntry,
   TicketRevision,
   Column,
+  TicketListOptions,
+  PaginatedResult,
 } from '../types.js';
 import { NotFoundError, ValidationError, DuplicateError } from './errors.js';
 
@@ -204,15 +206,19 @@ export class BoardService {
     return ticket;
   }
 
-  getTicketsByProject(projectId: string, actorId?: string | null): Ticket[] {
+  getTicketsByProject(projectId: string, actorId?: string | null, options?: TicketListOptions): PaginatedResult<Ticket> {
     this.requireProject(projectId);
-    const tickets = this.db.getTicketsByProject(projectId);
+    if (options?.column && !isValidColumn(options.column)) {
+      throw new ValidationError(`Invalid column "${options.column}". Valid: backlog, ready, in_progress, in_review, done`);
+    }
+    const result = this.db.getTicketsByProject(projectId, options);
     if (actorId) {
       const project = this.db.getProject(projectId);
-      this.audit(actorId, 'LIST', `tickets in '${project?.name ?? projectId}'`, `${tickets.length} tickets`);
-      this.logAndPublishActivity(actorId, projectId, null, 'tickets_listed', `Listed ${tickets.length} tickets`);
+      const filterInfo = options?.column ? ` (column=${options.column})` : '';
+      this.audit(actorId, 'LIST', `tickets in '${project?.name ?? projectId}'${filterInfo}`, `${result.total} total, page ${result.page}/${result.total_pages}`);
+      this.logAndPublishActivity(actorId, projectId, null, 'tickets_listed', `Listed ${result.data.length} of ${result.total} tickets${filterInfo}`);
     }
-    return tickets;
+    return result;
   }
 
   updateTicket(
