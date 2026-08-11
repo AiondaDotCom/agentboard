@@ -189,6 +189,7 @@ async function loadBoard(projectId) {
   renderBoard(allTickets);
   // Update snapshot after render so next diff works
   prevTicketState = snapshotTicketPositions();
+  prevGroupState = snapshotGroupPositions();
 }
 
 async function loadActivity(projectId) {
@@ -230,6 +231,24 @@ function snapshotTicketPositions() {
 // ---------------------------------------------------------------------------
 // Ticket groups (related tickets claimed by a single agent)
 // ---------------------------------------------------------------------------
+
+// Map "column::group" -> { rect, hue } from last render (for appear/dissolve animations)
+let prevGroupState = new Map();
+
+function snapshotGroupPositions() {
+  const snap = new Map();
+  document.querySelectorAll('.ticket-group').forEach(w => {
+    const col = w.closest('.column')?.dataset.column;
+    const group = w.dataset.group;
+    if (col && group) {
+      snap.set(`${col}::${group}`, {
+        rect: w.getBoundingClientRect(),
+        hue: w.style.getPropertyValue('--group-hue'),
+      });
+    }
+  });
+  return snap;
+}
 
 // Deterministic hue per group name (for consistent coloring)
 function groupHue(name) {
@@ -296,6 +315,8 @@ function renderBoard(tickets) {
 
   // Claim state per group (shown in group headers, updates in realtime)
   const groupClaims = computeGroupClaims(tickets);
+  const oldGroupState = prevGroupState;
+  const newGroupKeys = new Set();
 
   // 2. Render the new board (tickets of the same group cluster together)
   columns.forEach(col => {
@@ -332,12 +353,34 @@ function renderBoard(tickets) {
           wrapper = createGroupWrapper(t.group, groupClaims[t.group]);
           groupWrappers.set(t.group, wrapper);
           colEl.appendChild(wrapper);
+          const key = `${col}::${t.group}`;
+          newGroupKeys.add(key);
+          // Animate group clusters that newly appeared in this column
+          if (!oldGroupState.has(key)) {
+            wrapper.classList.add('group-appear');
+            wrapper.addEventListener('animationend', () => wrapper.classList.remove('group-appear'), { once: true });
+          }
         }
         wrapper.querySelector('.group-tickets').appendChild(card);
       } else {
         colEl.appendChild(card);
       }
     });
+  });
+
+  // Dissolve ghosts for group clusters that disappeared from a column
+  oldGroupState.forEach((info, key) => {
+    if (newGroupKeys.has(key)) return;
+    const ghost = document.createElement('div');
+    ghost.className = 'group-ghost';
+    ghost.style.left = info.rect.left + 'px';
+    ghost.style.top = info.rect.top + 'px';
+    ghost.style.width = info.rect.width + 'px';
+    ghost.style.height = info.rect.height + 'px';
+    if (info.hue) ghost.style.setProperty('--group-hue', info.hue);
+    document.body.appendChild(ghost);
+    ghost.addEventListener('animationend', () => ghost.remove(), { once: true });
+    setTimeout(() => { if (ghost.parentNode) ghost.remove(); }, 700);
   });
 
   // 3. Fly animation for moved tickets
@@ -383,6 +426,7 @@ function renderBoard(tickets) {
 
   // 4. Save state for next render
   prevTicketState = snapshotTicketPositions();
+  prevGroupState = snapshotGroupPositions();
 
   // 5. Reapply viewing badges (board re-render replaces all card DOM)
   reapplyAllViewingBadges();

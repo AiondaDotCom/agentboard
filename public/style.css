@@ -1521,3 +1521,37 @@ select:focus {
   font-size: 0.85rem;
   color: var(--text-secondary, #9aa5b5);
 }
+
+/* Group cluster appear/dissolve animations (realtime group changes) */
+.ticket-group.group-appear {
+  animation: groupAppear 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes groupAppear {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.group-ghost {
+  position: fixed;
+  z-index: 90;
+  pointer-events: none;
+  border: 1px solid hsla(var(--group-hue, 180), 70%, 55%, 0.35);
+  border-left: 3px solid hsl(var(--group-hue, 180), 70%, 55%);
+  border-radius: var(--radius-sm);
+  background: hsla(var(--group-hue, 180), 70%, 55%, 0.08);
+  animation: groupDissolve 0.45s ease-out forwards;
+}
+
+@keyframes groupDissolve {
+  to {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
