@@ -18,6 +18,7 @@ export const typeDefs = gql`
     description: String
     column: String!
     position: Int!
+    group: String
     agent: Agent
     agentId: String
     assignee: Agent

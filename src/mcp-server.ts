@@ -68,25 +68,28 @@ export function registerMcpTools(
     async ({ project_id, ticket_id }) =>
       wrap(() => service.getTicket(project_id, ticket_id, agentId)));
 
-  mcp.tool('create_ticket', 'Create a new ticket in a project. Descriptions support Markdown formatting (bold, lists, headings, code blocks, etc.) – please use Markdown for better readability.', {
+  mcp.tool('create_ticket', 'Create a new ticket in a project. Descriptions support Markdown formatting (bold, lists, headings, code blocks, etc.) – please use Markdown for better readability. Use "group" to bundle related tickets that must be handled by a single agent (assigning one ticket of a group claims the whole group).', {
     project_id: z.string().describe('Project ID'),
     title: z.string().describe('Ticket title'),
     description: z.string().optional().describe('Ticket description (supports Markdown: **bold**, *italic*, - lists, ## headings, `code`, etc.)'),
     column: z.enum(['backlog', 'ready', 'in_progress', 'in_review', 'done']).optional().describe('Initial column (default: backlog)'),
-  }, async ({ project_id, title, description, column }) =>
-    wrap(() => service.createTicket(project_id, title, description, column, agentId)));
+    group: z.string().optional().describe('Group name for related tickets that only one agent should work on (e.g. tickets touching the same files). Assigning any ticket of a group claims the whole group for that agent.'),
+  }, async ({ project_id, title, description, column, group }) =>
+    wrap(() => service.createTicket(project_id, title, description, column, agentId, group)));
 
-  mcp.tool('update_ticket', 'Update a ticket (title, description, or column). Descriptions support Markdown formatting.', {
+  mcp.tool('update_ticket', 'Update a ticket (title, description, column, or group). Descriptions support Markdown formatting.', {
     project_id: z.string().describe('Project ID'),
     ticket_id: z.string().describe('Ticket ID'),
     title: z.string().optional().describe('New title'),
     description: z.string().optional().describe('New description (supports Markdown: **bold**, *italic*, - lists, ## headings, `code`, etc.)'),
     column: z.enum(['backlog', 'ready', 'in_progress', 'in_review', 'done']).optional().describe('New column'),
-  }, async ({ project_id, ticket_id, title, description, column }) => {
-    const updates: { title?: string; description?: string; column?: string } = {};
+    group: z.string().optional().describe('Group name for related tickets that only one agent should work on. Pass an empty string to remove the ticket from its group.'),
+  }, async ({ project_id, ticket_id, title, description, column, group }) => {
+    const updates: { title?: string; description?: string; column?: string; group?: string | null } = {};
     if (title !== undefined) updates.title = title;
     if (description !== undefined) updates.description = description;
     if (column !== undefined) updates.column = column;
+    if (group !== undefined) updates.group = group;
     return wrap(() => service.updateTicket(project_id, ticket_id, updates, agentId));
   });
 
@@ -97,7 +100,7 @@ export function registerMcpTools(
   }, async ({ project_id, ticket_id, column }) =>
     wrap(() => service.moveTicket(project_id, ticket_id, column, agentId)));
 
-  mcp.tool('assign_ticket', 'Assign a ticket to an agent, or unassign it', {
+  mcp.tool('assign_ticket', 'Assign a ticket to an agent, or unassign it. Note: if the ticket belongs to a group, assigning it claims the WHOLE group for that agent – other agents cannot take tickets of a claimed group until it is released (all tickets done or unassigned).', {
     project_id: z.string().describe('Project ID'),
     ticket_id: z.string().describe('Ticket ID'),
     assignee_id: z.string().optional().describe('Agent ID to assign (omit or empty to unassign)'),

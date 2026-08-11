@@ -215,10 +215,56 @@ function snapshotTicketPositions() {
     const id = card.dataset.ticketId;
     const col = card.closest('.column')?.dataset.column;
     if (id && col) {
-      snap.set(id, { column: col, rect: card.getBoundingClientRect(), title: card.querySelector('.ticket-title')?.textContent || '' });
+      snap.set(id, {
+        column: col,
+        rect: card.getBoundingClientRect(),
+        title: card.querySelector('.ticket-title')?.textContent || '',
+        group: card.dataset.group || '',
+        assignee: card.dataset.assignee || '',
+      });
     }
   });
   return snap;
+}
+
+// ---------------------------------------------------------------------------
+// Ticket groups (related tickets claimed by a single agent)
+// ---------------------------------------------------------------------------
+
+// Deterministic hue per group name (for consistent coloring)
+function groupHue(name) {
+  let h = 0;
+  for (const c of name) h = ((h * 31) + c.charCodeAt(0)) >>> 0;
+  return h % 360;
+}
+
+// group -> claiming agent ({id, name}) or null while the group is free.
+// A group is claimed while any of its tickets outside "done" has an assignee.
+function computeGroupClaims(tickets) {
+  const claims = {};
+  tickets.forEach(t => {
+    if (!t.group) return;
+    if (!(t.group in claims)) claims[t.group] = null;
+    if (t.column !== 'done' && t.assigneeId && !claims[t.group]) {
+      claims[t.group] = agents[t.assigneeId] || { id: t.assigneeId, name: '???' };
+    }
+  });
+  return claims;
+}
+
+function createGroupWrapper(group, claimer) {
+  const wrap = document.createElement('div');
+  wrap.className = 'ticket-group' + (claimer ? ' claimed' : '');
+  wrap.dataset.group = group;
+  wrap.style.setProperty('--group-hue', groupHue(group));
+  wrap.innerHTML = `
+    <div class="group-header">
+      <span class="group-name" title="Ticket group – one agent works on all of these">&#x26D3;&#xFE0F; ${escapeHtml(group)}</span>
+      <span class="group-claim ${claimer ? 'claimed' : 'free'}">${claimer ? `&#x1f512; ${escapeHtml(claimer.name)}` : 'free'}</span>
+    </div>
+    <div class="group-tickets"></div>
+  `;
+  return wrap;
 }
 
 // ---------------------------------------------------------------------------
@@ -232,30 +278,33 @@ function renderBoard(tickets) {
   const oldState = prevTicketState;
   const oldIds = new Set(oldState.keys());
 
-  // Build new state map
-  const newState = new Map();
-  tickets.forEach(t => newState.set(t.id, t.column));
-
-  // Detect moves and new tickets
+  // Detect moves, new tickets, and in-place changes (group / assignee)
   const moved = [];   // { id, fromCol, toCol, oldRect, title }
   const created = [];  // ticket ids
+  const changed = [];  // ticket ids whose group or assignee changed in place
 
-  newState.forEach((newCol, id) => {
-    const old = oldState.get(id);
-    if (old && old.column !== newCol) {
-      moved.push({ id, fromCol: old.column, toCol: newCol, oldRect: old.rect, title: old.title });
-    } else if (!oldIds.has(id)) {
-      created.push(id);
+  tickets.forEach(t => {
+    const old = oldState.get(t.id);
+    if (old && old.column !== t.column) {
+      moved.push({ id: t.id, fromCol: old.column, toCol: t.column, oldRect: old.rect, title: old.title });
+    } else if (!oldIds.has(t.id)) {
+      created.push(t.id);
+    } else if (old && (old.group !== (t.group || '') || old.assignee !== (t.assigneeId || ''))) {
+      changed.push(t.id);
     }
   });
 
-  // 2. Render the new board
+  // Claim state per group (shown in group headers, updates in realtime)
+  const groupClaims = computeGroupClaims(tickets);
+
+  // 2. Render the new board (tickets of the same group cluster together)
   columns.forEach(col => {
     const colEl = document.querySelector(`[data-column="${col}"] .ticket-list`);
     const countEl = document.querySelector(`[data-column="${col}"] .column-count`);
     const colTickets = tickets.filter(t => t.column === col).sort((a, b) => b.position - a.position);
     countEl.textContent = colTickets.length;
     colEl.innerHTML = '';
+    const groupWrappers = new Map();
     colTickets.forEach(t => {
       const card = createTicketCard(t);
 
@@ -271,7 +320,23 @@ function renderBoard(tickets) {
         card.addEventListener('animationend', () => card.classList.remove('animate-new'), { once: true });
       }
 
-      colEl.appendChild(card);
+      // Flash tickets whose group or assignee changed in place
+      if (changed.includes(t.id)) {
+        card.classList.add('animate-update');
+        card.addEventListener('animationend', () => card.classList.remove('animate-update'), { once: true });
+      }
+
+      if (t.group) {
+        let wrapper = groupWrappers.get(t.group);
+        if (!wrapper) {
+          wrapper = createGroupWrapper(t.group, groupClaims[t.group]);
+          groupWrappers.set(t.group, wrapper);
+          colEl.appendChild(wrapper);
+        }
+        wrapper.querySelector('.group-tickets').appendChild(card);
+      } else {
+        colEl.appendChild(card);
+      }
     });
   });
 
@@ -327,6 +392,9 @@ function createTicketCard(ticket) {
   const card = document.createElement('div');
   card.className = 'ticket-card';
   card.dataset.ticketId = ticket.id;
+  card.dataset.group = ticket.group || '';
+  card.dataset.assignee = ticket.assigneeId || '';
+  if (ticket.group) card.style.setProperty('--group-hue', groupHue(ticket.group));
 
   const author = ticket.agentId ? (agents[ticket.agentId] || { name: '???' }) : null;
   const assignee = ticket.assigneeId ? (agents[ticket.assigneeId] || { name: '???' }) : null;
@@ -496,6 +564,12 @@ async function openModal(projectId, ticketId) {
     assigneeDisplay.textContent = `\u{1f527} Assigned: ${assignee.name}`;
   } else {
     assigneeDisplay.textContent = '';
+  }
+
+  // Group display
+  const groupDisplay = document.getElementById('modal-group-display');
+  if (groupDisplay) {
+    groupDisplay.textContent = ticket.group ? `\u{26d3}\u{fe0f} Group: ${ticket.group}` : '';
   }
 
   // Description (Markdown rendered, monospace font for ASCII art)
@@ -829,7 +903,7 @@ function subscribe(socket, id, eventName, projectId) {
   } else if (eventName === 'commentAdded') {
     query = `subscription { ${eventName}(projectId: "${projectId}") { id ticketId agent { id name } body createdAt } }`;
   } else {
-    query = `subscription { ${eventName}(projectId: "${projectId}") { id projectId title description column position agentId assigneeId agent { id name } assignee { id name } createdAt updatedAt } }`;
+    query = `subscription { ${eventName}(projectId: "${projectId}") { id projectId title description column position group agentId assigneeId agent { id name } assignee { id name } createdAt updatedAt } }`;
   }
 
   socket.send(JSON.stringify({

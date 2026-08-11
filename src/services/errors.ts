@@ -22,3 +22,11 @@ export class DuplicateError extends Error {
     this.name = 'DuplicateError';
   }
 }
+
+/** The operation conflicts with the current board state (e.g. group claimed by another agent). */
+export class ConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ConflictError';
+  }
+}

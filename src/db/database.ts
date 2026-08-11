@@ -48,6 +48,7 @@ interface TicketRow {
   description: string;
   column_name: string;
   position: number;
+  group_name: string | null;
   agent_id: string | null;
   assignee_id: string | null;
   comment_count: number;
@@ -108,12 +109,28 @@ export class AgentboardDB {
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
 
+    // Migrations for existing databases (before schema exec, which only
+    // creates missing tables/indexes and cannot add columns)
+    this.migrate();
+
     // Bootstrap schema
     const schemaFile = fileURLToPath(
       new URL('./schema.sql', import.meta.url),
     );
     const schema = fs.readFileSync(schemaFile, 'utf-8');
     this.db.exec(schema);
+  }
+
+  private migrate(): void {
+    const hasTickets = this.db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tickets'")
+      .get();
+    if (!hasTickets) return;
+
+    const columns = this.db.prepare('PRAGMA table_info(tickets)').all() as { name: string }[];
+    if (!columns.some((c) => c.name === 'group_name')) {
+      this.db.exec('ALTER TABLE tickets ADD COLUMN group_name TEXT');
+    }
   }
 
   /** Cleanly close the database connection. */
@@ -159,6 +176,7 @@ export class AgentboardDB {
       description: row.description,
       column: row.column_name as Column,
       position: row.position,
+      group: row.group_name ?? null,
       agentId: row.agent_id,
       assigneeId: row.assignee_id ?? null,
       commentCount: row.comment_count ?? 0,
@@ -357,11 +375,13 @@ export class AgentboardDB {
     description?: string,
     column?: Column,
     agentId?: string | null,
+    group?: string | null,
   ): Ticket {
     const id = uuidv4();
     const desc = description ?? '';
     const col = column ?? 'backlog';
     const agent = agentId ?? null;
+    const groupName = group ?? null;
 
     // Determine next position in the target column
     const maxPos = this.db
@@ -373,9 +393,9 @@ export class AgentboardDB {
     const position = maxPos.max_pos + 1;
 
     const stmt = this.db.prepare(
-      'INSERT INTO tickets (id, project_id, title, description, column_name, position, agent_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO tickets (id, project_id, title, description, column_name, position, agent_id, group_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
     );
-    stmt.run(id, projectId, title, desc, col, position, agent);
+    stmt.run(id, projectId, title, desc, col, position, agent, groupName);
 
     const row = this.db
       .prepare('SELECT t.*, (SELECT COUNT(*) FROM comments c WHERE c.ticket_id = t.id) AS comment_count FROM tickets t WHERE t.id = ?')
@@ -448,6 +468,7 @@ export class AgentboardDB {
       title?: string;
       description?: string;
       column?: Column;
+      group?: string | null;
       agentId?: string | null;
     },
     actorId?: string | null,
@@ -460,6 +481,7 @@ export class AgentboardDB {
     const newTitle = updates.title ?? existing.title;
     const newDescription = updates.description ?? existing.description;
     const newColumn = updates.column ?? existing.column;
+    const newGroup = 'group' in updates ? (updates.group ?? null) : existing.group;
     const newAgentId =
       'agentId' in updates ? (updates.agentId ?? null) : existing.agentId;
 
@@ -473,6 +495,9 @@ export class AgentboardDB {
     }
     if (newColumn !== existing.column) {
       this.logRevision(ticketId, actor, 'column', existing.column, newColumn);
+    }
+    if (newGroup !== existing.group) {
+      this.logRevision(ticketId, actor, 'group', existing.group ?? '', newGroup ?? '');
     }
     if (newAgentId !== existing.agentId) {
       this.logRevision(ticketId, actor, 'agentId', existing.agentId ?? '', newAgentId ?? '');
@@ -492,7 +517,7 @@ export class AgentboardDB {
     this.db
       .prepare(
         `UPDATE tickets
-         SET title = ?, description = ?, column_name = ?, position = ?, agent_id = ?, updated_at = datetime('now')
+         SET title = ?, description = ?, column_name = ?, position = ?, group_name = ?, agent_id = ?, updated_at = datetime('now')
          WHERE id = ? AND project_id = ?`,
       )
       .run(
@@ -500,6 +525,7 @@ export class AgentboardDB {
         newDescription,
         newColumn,
         newPosition,
+        newGroup,
         newAgentId,
         ticketId,
         projectId,
@@ -515,6 +541,18 @@ export class AgentboardDB {
     actorId?: string | null,
   ): Ticket | undefined {
     return this.updateTicket(projectId, ticketId, { column }, actorId);
+  }
+
+  /** All tickets of a group within a project (any column). */
+  getTicketsByGroup(projectId: string, group: string): Ticket[] {
+    const rows = this.db
+      .prepare(
+        `SELECT t.*, (SELECT COUNT(*) FROM comments c WHERE c.ticket_id = t.id) AS comment_count
+         FROM tickets t WHERE t.project_id = ? AND t.group_name = ? ORDER BY t.position ASC`,
+      )
+      .all(projectId, group) as TicketRow[];
+
+    return rows.map((r) => this.mapTicketRow(r));
   }
 
   assignTicket(

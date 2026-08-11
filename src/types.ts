@@ -78,6 +78,8 @@ export interface Ticket {
   description: string;
   column: Column;
   position: number;
+  /** Optional group name – tickets in the same group are claimed by one agent. */
+  group: string | null;
   agentId: string | null;
   assigneeId: string | null;
   commentCount: number;

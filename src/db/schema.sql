@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   description TEXT NOT NULL DEFAULT '',
   column_name TEXT NOT NULL DEFAULT 'backlog',
   position INTEGER NOT NULL DEFAULT 0,
+  group_name TEXT,
   agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
   assignee_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -71,6 +72,7 @@ CREATE TABLE IF NOT EXISTS ticket_revisions (
 CREATE INDEX IF NOT EXISTS idx_revisions_ticket ON ticket_revisions(ticket_id);
 
 CREATE INDEX IF NOT EXISTS idx_tickets_project ON tickets(project_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_group ON tickets(project_id, group_name);
 CREATE INDEX IF NOT EXISTS idx_tickets_column ON tickets(column_name);
 CREATE INDEX IF NOT EXISTS idx_comments_ticket ON comments(ticket_id);
 CREATE INDEX IF NOT EXISTS idx_activity_ticket ON activity_log(ticket_id);

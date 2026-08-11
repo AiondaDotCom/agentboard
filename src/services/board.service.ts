@@ -23,7 +23,7 @@ import type {
   TicketListOptions,
   PaginatedResult,
 } from '../types.js';
-import { NotFoundError, ValidationError, DuplicateError } from './errors.js';
+import { NotFoundError, ValidationError, DuplicateError, ConflictError } from './errors.js';
 
 export class BoardService {
   constructor(private db: AgentboardDB) {}
@@ -159,6 +159,7 @@ export class BoardService {
     description?: string,
     column?: string,
     agentId?: string | null,
+    group?: string | null,
   ): Ticket {
     this.requireProject(projectId);
 
@@ -171,12 +172,18 @@ export class BoardService {
       throw new ValidationError(`Invalid column value: "${col}"`);
     }
 
+    if (group !== undefined && group !== null && typeof group !== 'string') {
+      throw new ValidationError('Invalid "group" field');
+    }
+    const groupName = typeof group === 'string' && group.trim().length > 0 ? group.trim() : null;
+
     const ticket = this.db.createTicket(
       projectId,
       title.trim(),
       description ?? '',
       col,
       agentId ?? null,
+      groupName,
     );
 
     this.db.logActivity(
@@ -224,7 +231,7 @@ export class BoardService {
   updateTicket(
     projectId: string,
     ticketId: string,
-    updates: { title?: string; description?: string; column?: string },
+    updates: { title?: string; description?: string; column?: string; group?: string | null },
     actorId?: string | null,
   ): Ticket {
     const resolved = this.requireTicket(projectId, ticketId);
@@ -238,11 +245,29 @@ export class BoardService {
     if (updates.column !== undefined && !isValidColumn(updates.column)) {
       throw new ValidationError(`Invalid column value: "${updates.column}"`);
     }
+    if ('group' in updates && updates.group !== null && typeof updates.group !== 'string') {
+      throw new ValidationError('Invalid "group" field');
+    }
 
-    const cleanUpdates: { title?: string; description?: string; column?: Column } = {};
+    const cleanUpdates: { title?: string; description?: string; column?: Column; group?: string | null } = {};
     if (typeof updates.title === 'string') cleanUpdates.title = updates.title.trim();
     if (typeof updates.description === 'string') cleanUpdates.description = updates.description;
     if (isValidColumn(updates.column)) cleanUpdates.column = updates.column;
+    if ('group' in updates) {
+      const g = typeof updates.group === 'string' ? updates.group.trim() : null;
+      cleanUpdates.group = g && g.length > 0 ? g : null;
+
+      // Moving a ticket into a group that is claimed by another agent is only
+      // allowed if the ticket is unassigned or assigned to that same agent.
+      if (cleanUpdates.group && cleanUpdates.group !== resolved.group) {
+        const claimer = this.findGroupClaimer(projectId, cleanUpdates.group, resolved.id);
+        if (claimer && resolved.assigneeId && resolved.assigneeId !== claimer.id) {
+          throw new ConflictError(
+            `Group "${cleanUpdates.group}" is claimed by agent "${claimer.name}" – ticket is assigned to a different agent`,
+          );
+        }
+      }
+    }
 
     const ticket = this.db.updateTicket(projectId, resolved.id, cleanUpdates, actorId ?? null);
     if (!ticket) throw new NotFoundError('Ticket not found');
@@ -306,12 +331,25 @@ export class BoardService {
     const assignee = this.db.getAgentById(assigneeId);
     if (!assignee) throw new NotFoundError('Agent not found');
 
+    // Group claim rule: assigning any ticket of a group claims the whole group.
+    // A group counts as claimed while any of its tickets (outside "done") has
+    // an assignee. Only that agent may take further tickets of the group.
+    if (resolved.group) {
+      const claimer = this.findGroupClaimer(projectId, resolved.group, resolved.id);
+      if (claimer && claimer.id !== assigneeId) {
+        throw new ConflictError(
+          `Group "${resolved.group}" is claimed by agent "${claimer.name}" – pick a ticket from a free group instead`,
+        );
+      }
+    }
+
     const ticket = this.db.assignTicket(projectId, resolved.id, assigneeId, actorId ?? null);
     if (!ticket) throw new NotFoundError('Ticket not found');
 
     this.logAndPublishActivity(
       actorId ?? null, projectId, ticket.id,
-      'ticket_assigned', `Assigned to ${assignee.name}`,
+      'ticket_assigned',
+      ticket.group ? `Assigned to ${assignee.name} (claims group "${ticket.group}")` : `Assigned to ${assignee.name}`,
     );
 
     pubsub.publish(EVENTS.TICKET_UPDATED, {
@@ -505,5 +543,27 @@ export class BoardService {
     const ticket = this.db.getTicket(projectId, ticketId);
     if (!ticket) throw new NotFoundError('Ticket not found');
     return ticket;
+  }
+
+  /**
+   * Returns the agent currently claiming a group, or null if the group is free.
+   * A group is claimed while any of its tickets outside "done" has an assignee.
+   * The ticket being operated on (excludeTicketId) is ignored so re-assigning
+   * it does not conflict with itself.
+   */
+  private findGroupClaimer(
+    projectId: string,
+    group: string,
+    excludeTicketId?: string,
+  ): AgentPublic | null {
+    const groupTickets = this.db.getTicketsByGroup(projectId, group);
+    for (const t of groupTickets) {
+      if (t.id === excludeTicketId) continue;
+      if (t.column === 'done') continue;
+      if (t.assigneeId) {
+        return this.db.getAgentById(t.assigneeId) ?? null;
+      }
+    }
+    return null;
   }
 }

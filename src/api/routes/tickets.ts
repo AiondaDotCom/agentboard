@@ -17,10 +17,11 @@ export function createTicketRoutes(service: BoardService): Router {
   router.post('/tickets', auth, (req: Request, res: Response): void => {
     try {
       const projectId = String(req.params['id'] ?? '');
-      const { title, description, column } = req.body as {
+      const { title, description, column, group } = req.body as {
         title?: unknown;
         description?: unknown;
         column?: unknown;
+        group?: unknown;
       };
       const agentId = (req as AuthenticatedRequest).agentId ?? null;
 
@@ -30,6 +31,7 @@ export function createTicketRoutes(service: BoardService): Router {
         typeof description === 'string' ? description : undefined,
         column as string | undefined,
         agentId,
+        typeof group === 'string' ? group : undefined,
       );
       res.status(201).json(ticket);
     } catch (err) {
@@ -71,17 +73,19 @@ export function createTicketRoutes(service: BoardService): Router {
     try {
       const projectId = String(req.params['id'] ?? '');
       const ticketId = String(req.params['ticketId'] ?? '');
-      const { title, description, column } = req.body as {
+      const { title, description, column, group } = req.body as {
         title?: unknown;
         description?: unknown;
         column?: unknown;
+        group?: unknown;
       };
       const agentId = (req as AuthenticatedRequest).agentId ?? null;
 
-      const updates: { title?: string; description?: string; column?: string } = {};
+      const updates: { title?: string; description?: string; column?: string; group?: string | null } = {};
       if (title !== undefined) updates.title = title as string;
       if (description !== undefined) updates.description = description as string;
       if (column !== undefined) updates.column = column as string;
+      if (group !== undefined) updates.group = group as string | null;
 
       const ticket = service.updateTicket(projectId, ticketId, updates, agentId);
       res.json(ticket);

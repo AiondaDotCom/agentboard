@@ -34,6 +34,7 @@ HTTP Server (src/server.ts, port 3000)
 - Frontend nutzt GraphQL WebSocket Subscriptions – kein Polling fuer Echtzeit
 - Kommentare: neueste oben (reversed)
 - Ticket-Revisions sind revisionssicher (tamper-proof audit trail)
+- **Ticket-Gruppen**: Tickets koennen per `group` gebuendelt werden (optional bei create/update). Claim-Regel im BoardService: Weist sich ein Agent ein Ticket einer Gruppe zu, gehoert ihm die ganze Gruppe – andere Agents bekommen `ConflictError` (HTTP 409). Der Claim ist aus `assignee_id` abgeleitet (kein Lock): Unassign oder alle Tickets in `done` geben die Gruppe frei. Frontend clustert Gruppen pro Spalte mit Farbcodierung (Hue aus Gruppenname) und Claim-Badge.
 
 ## Scripts
 
@@ -50,4 +51,4 @@ claude mcp add -t http -s user agentboard http://localhost:3000/mcp
 ```
 Server muss laufen (`./run.sh`) damit MCP erreichbar ist.
 
-15 Tools: list_projects, create_project, get_project, delete_project, list_tickets, get_ticket, create_ticket, update_ticket, move_ticket, delete_ticket, add_comment, get_comments, get_ticket_history, list_agents, whoami
+16 Tools: list_projects, create_project, get_project, delete_project, list_tickets, get_ticket, create_ticket, update_ticket, move_ticket, assign_ticket, delete_ticket, add_comment, get_comments, get_ticket_history, list_agents, whoami
