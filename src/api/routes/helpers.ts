@@ -3,7 +3,18 @@
 // ---------------------------------------------------------------------------
 
 import type { Response } from 'express';
+import type { AuthenticatedRequest } from '../middleware/auth.js';
 import { NotFoundError, ValidationError, DuplicateError, ConflictError } from '../../services/errors.js';
+
+/** Read a route param defensively (missing params become ''). */
+export function routeParam(req: { params: Record<string, unknown> }, name: string): string {
+  return String(req.params[name] ?? '');
+}
+
+/** Agent id set by the auth middleware, or null for unauthenticated requests. */
+export function agentIdOf(req: AuthenticatedRequest): string | null {
+  return req.agentId ?? null;
+}
 
 /** Map service-layer errors to appropriate HTTP status codes. */
 export function handleServiceError(res: Response, err: unknown): void {

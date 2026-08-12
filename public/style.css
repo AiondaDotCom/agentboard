@@ -1555,3 +1555,302 @@ select:focus {
     transform: scale(0.94);
   }
 }
+
+/* ===========================================================================
+   Per-project columns, blocked reason, dependencies, last-touched
+   =========================================================================== */
+
+:root {
+  --column-blocked: #ef4444;
+  --column-rework: #a855f7;
+  --dep-open: #ff5f6d;
+  --dep-done: #34d399;
+}
+
+/* Generic column coloring – JS sets --col-color per column (works for any
+   custom column id; the specific [data-column=...] rules above still apply
+   to the well-known ids) */
+.column .column-title { color: var(--col-color, var(--text-dim)); }
+.column .column-header::after {
+  background: linear-gradient(90deg, var(--col-color, transparent) 0%, transparent 100%);
+}
+
+/* Modal badge for custom columns (well-known ids keep their specific rules) */
+.modal-column-badge {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--col-color, var(--text));
+}
+
+/* Overview column chips (each project shows its own column set) */
+.overview-cols {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.stat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-border);
+  white-space: nowrap;
+}
+
+.stat-chip .stat-chip-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: var(--chip-color, var(--text-dim));
+}
+
+.stat-chip .overview-count {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.stat-chip.zero {
+  opacity: 0.35;
+}
+
+.stat-chip.zero .overview-count {
+  font-weight: 400;
+  color: var(--text-dim);
+}
+
+tr.overview-flash {
+  animation: cellFlash 0.8s ease-out;
+}
+
+/* Blocked reason on cards + modal */
+.ticket-blocked {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #fca5a5;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.modal-blocked {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #fca5a5;
+  font-size: 13px;
+}
+
+/* Last touched */
+.ticket-updated {
+  color: var(--text-dim);
+  font-size: 10.5px;
+  opacity: 0.75;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.modal-updated {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* Dependency badge on cards */
+.ticket-deps {
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 10px;
+  white-space: nowrap;
+  transition: transform 0.15s ease;
+}
+
+.ticket-deps:hover { transform: scale(1.1); }
+
+.ticket-deps.deps-open {
+  background: rgba(255, 95, 109, 0.14);
+  border: 1px solid rgba(255, 95, 109, 0.35);
+  color: var(--dep-open);
+}
+
+.ticket-deps.deps-done {
+  background: rgba(52, 211, 153, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  color: var(--dep-done);
+}
+
+/* Dependency arrows overlay */
+.dep-arrows {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 900;
+}
+
+.dep-arrows path.dep-line {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 6px rgba(0, 0, 0, 0.6));
+  animation: depLineIn 0.3s ease-out;
+}
+
+.dep-arrows path.dep-line-open { stroke: var(--dep-open); }
+.dep-arrows path.dep-line-done { stroke: var(--dep-done); }
+
+@keyframes depLineIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.ticket-card.dep-source {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  z-index: 10;
+}
+
+.ticket-card.dep-target {
+  outline: 2px solid var(--dep-open);
+  outline-offset: 2px;
+  z-index: 10;
+}
+
+.ticket-card.dep-target-done {
+  outline-color: var(--dep-done);
+}
+
+/* Modal dependency list */
+.modal-deps {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-border);
+  font-size: 13px;
+}
+
+.modal-deps-label {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.modal-dep-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.modal-dep-item .modal-dep-id {
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.modal-dep-item .modal-dep-title { flex: 1; }
+
+.modal-dep-item .modal-dep-col {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.modal-dep-item.dep-done .modal-dep-title {
+  color: var(--text-dim);
+  text-decoration: line-through;
+  text-decoration-color: rgba(52, 211, 153, 0.5);
+}
+
+/* Columns editor modal */
+.btn-edit-columns { margin-right: 4px; }
+
+.columns-editor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.columns-editor-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-border);
+}
+
+.columns-editor-drag {
+  color: var(--text-dim);
+  opacity: 0.5;
+  font-size: 12px;
+}
+
+.columns-editor-title {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.columns-editor-title:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.columns-editor-id {
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  min-width: 90px;
+  text-align: right;
+  opacity: 0.7;
+}
+
+.btn-remove-column:hover {
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.columns-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.btn-save-columns {
+  background: var(--accent);
+  color: #0f1219;
+  font-weight: 700;
+}
+
+.columns-error {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+  font-size: 13px;
+}

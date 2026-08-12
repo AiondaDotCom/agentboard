@@ -326,7 +326,7 @@ describe('Ticket Revision Routes', () => {
     await request(app)
       .patch(`/api/projects/${projectId}/tickets/${ticketId}/move`)
       .set('X-Api-Key', apiKey)
-      .send({ column: 'ready' });
+      .send({ column: 'blocked' });
 
     await request(app)
       .patch(`/api/projects/${projectId}/tickets/${ticketId}/move`)
@@ -351,7 +351,7 @@ describe('Ticket Revision Routes', () => {
 
     // Verify chronological order
     expect(res.body[0].field).toBe('column');
-    expect(res.body[0].newValue).toBe('ready');
+    expect(res.body[0].newValue).toBe('blocked');
     expect(res.body[1].field).toBe('column');
     expect(res.body[1].newValue).toBe('in_progress');
     expect(res.body[2].field).toBe('title');

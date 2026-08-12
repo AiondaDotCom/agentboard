@@ -11,6 +11,11 @@ export const typeDefs = gql`
     createdAt: String!
   }
 
+  type BoardColumn {
+    id: String!
+    title: String!
+  }
+
   type Ticket {
     id: ID!
     projectId: String!
@@ -19,6 +24,8 @@ export const typeDefs = gql`
     column: String!
     position: Int!
     group: String
+    blockedReason: String
+    dependsOn: [String!]!
     agent: Agent
     agentId: String
     assignee: Agent
@@ -32,6 +39,7 @@ export const typeDefs = gql`
     id: ID!
     name: String!
     description: String
+    columns: [BoardColumn!]!
     tickets: [Ticket!]!
     createdAt: String!
   }

@@ -9,7 +9,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { AgentboardDB } from '../db/database.js';
 import { pubsub, EVENTS } from '../graphql/pubsub.js';
-import { isValidColumn } from '../types.js';
+import { COLUMN_ID_RE, DEFAULT_COLUMNS } from '../types.js';
 import type {
   Agent,
   AgentPublic,
@@ -20,10 +20,13 @@ import type {
   AuditEntry,
   TicketRevision,
   Column,
+  ColumnDef,
   TicketListOptions,
   PaginatedResult,
 } from '../types.js';
 import { NotFoundError, ValidationError, DuplicateError, ConflictError } from './errors.js';
+
+const MAX_COLUMNS = 20;
 
 export class BoardService {
   constructor(private db: AgentboardDB) {}
@@ -115,13 +118,73 @@ export class BoardService {
   // Projects
   // -------------------------------------------------------------------------
 
-  createProject(name: string, description?: string, actorId?: string | null): Project {
+  createProject(
+    name: string,
+    description?: string,
+    actorId?: string | null,
+    columns?: unknown,
+  ): Project {
     if (typeof name !== 'string' || name.trim().length === 0) {
       throw new ValidationError('Missing or invalid "name" field');
     }
-    const project = this.db.createProject(name.trim(), description ?? '');
+    const cols = columns !== undefined ? this.validateColumnsInput(columns) : DEFAULT_COLUMNS;
+    const project = this.db.createProject(name.trim(), description ?? '', cols);
     pubsub.publish(EVENTS.PROJECT_CHANGED, { projectChanged: project });
     this.audit(actorId ?? null, 'CREATE', `project '${project.name}'`);
+    return project;
+  }
+
+  /**
+   * Update project metadata and/or its board columns.
+   * Columns can only be removed while no ticket is still in them.
+   */
+  updateProject(
+    id: string,
+    updates: { name?: string; description?: string; columns?: unknown },
+    actorId?: string | null,
+  ): Project {
+    const existing = this.requireProject(id);
+
+    if (updates.name !== undefined && (typeof updates.name !== 'string' || updates.name.trim().length === 0)) {
+      throw new ValidationError('Invalid "name" field');
+    }
+    if (updates.description !== undefined && typeof updates.description !== 'string') {
+      throw new ValidationError('Invalid "description" field');
+    }
+
+    const cleanUpdates: { name?: string; description?: string; columns?: ColumnDef[] } = {};
+    if (typeof updates.name === 'string') cleanUpdates.name = updates.name.trim();
+    if (typeof updates.description === 'string') cleanUpdates.description = updates.description;
+
+    if (updates.columns !== undefined) {
+      const cols = this.validateColumnsInput(updates.columns);
+      const newIds = new Set(cols.map((c) => c.id));
+
+      // Tickets must never end up in a column that no longer exists.
+      const tickets = this.db.getTicketsByProject(id, { per_page: 100000 }).data;
+      const stranded = new Map<string, number>();
+      for (const t of tickets) {
+        if (!newIds.has(t.column)) {
+          stranded.set(t.column, (stranded.get(t.column) ?? 0) + 1);
+        }
+      }
+      if (stranded.size > 0) {
+        const detail = [...stranded.entries()].map(([col, n]) => `"${col}" (${n} ticket${n !== 1 ? 's' : ''})`).join(', ');
+        throw new ValidationError(
+          `Cannot remove column(s) still containing tickets: ${detail}. Move those tickets to another column first.`,
+        );
+      }
+      cleanUpdates.columns = cols;
+    }
+
+    const project = this.db.updateProject(existing.id, cleanUpdates);
+    if (!project) throw new NotFoundError('Project not found');
+
+    pubsub.publish(EVENTS.PROJECT_CHANGED, { projectChanged: project });
+    this.audit(actorId ?? null, 'UPDATE', `project '${project.name}'`, JSON.stringify({
+      ...cleanUpdates,
+      columns: cleanUpdates.columns?.map((c) => c.id),
+    }));
     return project;
   }
 
@@ -160,22 +223,35 @@ export class BoardService {
     column?: string,
     agentId?: string | null,
     group?: string | null,
+    blockedReason?: string | null,
+    dependsOn?: unknown,
   ): Ticket {
-    this.requireProject(projectId);
+    const project = this.requireProject(projectId);
 
     if (typeof title !== 'string' || title.trim().length === 0) {
       throw new ValidationError('Missing or invalid "title" field');
     }
 
-    const col = column ?? 'backlog';
-    if (!isValidColumn(col)) {
-      throw new ValidationError(`Invalid column value: "${col}"`);
-    }
+    const col = column ?? project.columns[0]!.id;
+    this.requireValidColumn(project, col);
 
     if (group !== undefined && group !== null && typeof group !== 'string') {
       throw new ValidationError('Invalid "group" field');
     }
     const groupName = typeof group === 'string' && group.trim().length > 0 ? group.trim() : null;
+
+    if (blockedReason !== undefined && blockedReason !== null && typeof blockedReason !== 'string') {
+      throw new ValidationError('Invalid "blocked_reason" field');
+    }
+    const reason = typeof blockedReason === 'string' && blockedReason.trim().length > 0
+      ? blockedReason.trim()
+      : null;
+
+    let deps: string[] = [];
+    if (dependsOn !== undefined) {
+      deps = this.resolveDependencies(projectId, null, dependsOn);
+      this.assertDependenciesAllowColumn(project, deps, col, title.trim());
+    }
 
     const ticket = this.db.createTicket(
       projectId,
@@ -184,6 +260,8 @@ export class BoardService {
       col,
       agentId ?? null,
       groupName,
+      reason,
+      deps,
     );
 
     this.db.logActivity(
@@ -214,9 +292,9 @@ export class BoardService {
   }
 
   getTicketsByProject(projectId: string, actorId?: string | null, options?: TicketListOptions): PaginatedResult<Ticket> {
-    this.requireProject(projectId);
-    if (options?.column && !isValidColumn(options.column)) {
-      throw new ValidationError(`Invalid column "${options.column}". Valid: backlog, ready, in_progress, in_review, done`);
+    const project = this.requireProject(projectId);
+    if (options?.column) {
+      this.requireValidColumn(project, options.column);
     }
     const result = this.db.getTicketsByProject(projectId, options);
     if (actorId) {
@@ -231,9 +309,17 @@ export class BoardService {
   updateTicket(
     projectId: string,
     ticketId: string,
-    updates: { title?: string; description?: string; column?: string; group?: string | null },
+    updates: {
+      title?: string;
+      description?: string;
+      column?: string;
+      group?: string | null;
+      blockedReason?: string | null;
+      dependsOn?: unknown;
+    },
     actorId?: string | null,
   ): Ticket {
+    const project = this.requireProject(projectId);
     const resolved = this.requireTicket(projectId, ticketId);
 
     if (updates.title !== undefined && (typeof updates.title !== 'string' || updates.title.trim().length === 0)) {
@@ -242,17 +328,44 @@ export class BoardService {
     if (updates.description !== undefined && typeof updates.description !== 'string') {
       throw new ValidationError('Invalid "description" field');
     }
-    if (updates.column !== undefined && !isValidColumn(updates.column)) {
-      throw new ValidationError(`Invalid column value: "${updates.column}"`);
+    if (updates.column !== undefined) {
+      this.requireValidColumn(project, updates.column);
     }
     if ('group' in updates && updates.group !== null && typeof updates.group !== 'string') {
       throw new ValidationError('Invalid "group" field');
     }
+    if ('blockedReason' in updates && updates.blockedReason !== null && typeof updates.blockedReason !== 'string') {
+      throw new ValidationError('Invalid "blocked_reason" field');
+    }
 
-    const cleanUpdates: { title?: string; description?: string; column?: Column; group?: string | null } = {};
+    const cleanUpdates: {
+      title?: string;
+      description?: string;
+      column?: Column;
+      group?: string | null;
+      blockedReason?: string | null;
+      dependsOn?: string[];
+    } = {};
     if (typeof updates.title === 'string') cleanUpdates.title = updates.title.trim();
     if (typeof updates.description === 'string') cleanUpdates.description = updates.description;
-    if (isValidColumn(updates.column)) cleanUpdates.column = updates.column;
+    if (typeof updates.column === 'string') cleanUpdates.column = updates.column;
+    if ('blockedReason' in updates) {
+      const r = typeof updates.blockedReason === 'string' ? updates.blockedReason.trim() : null;
+      cleanUpdates.blockedReason = r && r.length > 0 ? r : null;
+    }
+    if (updates.dependsOn !== undefined) {
+      const deps = this.resolveDependencies(projectId, resolved.id, updates.dependsOn);
+      this.assertNoDependencyCycle(projectId, resolved.id, deps);
+      cleanUpdates.dependsOn = deps;
+    }
+
+    // Dependency gate: moving to any column but the first requires all
+    // dependencies to be finished.
+    if (cleanUpdates.column !== undefined && cleanUpdates.column !== resolved.column) {
+      const effectiveDeps = cleanUpdates.dependsOn ?? resolved.dependsOn;
+      this.assertDependenciesAllowColumn(project, effectiveDeps, cleanUpdates.column, resolved.title);
+    }
+
     if ('group' in updates) {
       const g = typeof updates.group === 'string' ? updates.group.trim() : null;
       cleanUpdates.group = g && g.length > 0 ? g : null;
@@ -289,10 +402,12 @@ export class BoardService {
     column: string,
     actorId?: string | null,
   ): Ticket {
+    const project = this.requireProject(projectId);
     const resolved = this.requireTicket(projectId, ticketId);
 
-    if (!isValidColumn(column)) {
-      throw new ValidationError(`Invalid or missing column value: "${column}"`);
+    this.requireValidColumn(project, column);
+    if (column !== resolved.column) {
+      this.assertDependenciesAllowColumn(project, resolved.dependsOn, column, resolved.title);
     }
 
     const ticket = this.db.moveTicket(projectId, resolved.id, column, actorId ?? null);
@@ -386,12 +501,18 @@ export class BoardService {
   }
 
   closeTicket(projectId: string, ticketId: string): Ticket {
+    const project = this.requireProject(projectId);
     const resolved = this.requireTicket(projectId, ticketId);
+    const doneColumn = project.columns[project.columns.length - 1]!.id;
 
-    const ticket = this.db.moveTicket(projectId, resolved.id, 'done', null);
+    if (doneColumn !== resolved.column) {
+      this.assertDependenciesAllowColumn(project, resolved.dependsOn, doneColumn, resolved.title);
+    }
+
+    const ticket = this.db.moveTicket(projectId, resolved.id, doneColumn, null);
     if (!ticket) throw new NotFoundError('Ticket not found');
 
-    this.db.logActivity(null, ticket.id, 'ticket_moved', 'Human closed \u2192 done');
+    this.db.logActivity(null, ticket.id, 'ticket_moved', `Human closed \u2192 ${doneColumn}`);
 
     pubsub.publish(EVENTS.TICKET_MOVED, {
       ticketMoved: ticket,
@@ -402,12 +523,14 @@ export class BoardService {
   }
 
   openTicket(projectId: string, ticketId: string): Ticket {
+    const project = this.requireProject(projectId);
     const resolved = this.requireTicket(projectId, ticketId);
+    const firstColumn = project.columns[0]!.id;
 
-    const ticket = this.db.moveTicket(projectId, resolved.id, 'backlog', null);
+    const ticket = this.db.moveTicket(projectId, resolved.id, firstColumn, null);
     if (!ticket) throw new NotFoundError('Ticket not found');
 
-    this.db.logActivity(null, ticket.id, 'ticket_moved', 'Human reopened \u2192 backlog');
+    this.db.logActivity(null, ticket.id, 'ticket_moved', `Human reopened \u2192 ${firstColumn}`);
 
     pubsub.publish(EVENTS.TICKET_MOVED, {
       ticketMoved: ticket,
@@ -547,23 +670,146 @@ export class BoardService {
 
   /**
    * Returns the agent currently claiming a group, or null if the group is free.
-   * A group is claimed while any of its tickets outside "done" has an assignee.
-   * The ticket being operated on (excludeTicketId) is ignored so re-assigning
-   * it does not conflict with itself.
+   * A group is claimed while any of its tickets outside the last (finished)
+   * column has an assignee. The ticket being operated on (excludeTicketId) is
+   * ignored so re-assigning it does not conflict with itself.
    */
   private findGroupClaimer(
     projectId: string,
     group: string,
     excludeTicketId?: string,
   ): AgentPublic | null {
+    const project = this.db.getProject(projectId);
+    const doneColumn = project ? project.columns[project.columns.length - 1]!.id : 'done';
     const groupTickets = this.db.getTicketsByGroup(projectId, group);
     for (const t of groupTickets) {
       if (t.id === excludeTicketId) continue;
-      if (t.column === 'done') continue;
+      if (t.column === doneColumn) continue;
       if (t.assigneeId) {
         return this.db.getAgentById(t.assigneeId) ?? null;
       }
     }
     return null;
+  }
+
+  // -------------------------------------------------------------------------
+  // Column configuration & dependency helpers
+  // -------------------------------------------------------------------------
+
+  /** Throws unless columnId exists in the project's configured columns. */
+  private requireValidColumn(project: Project, columnId: string): void {
+    if (typeof columnId !== 'string' || !project.columns.some((c) => c.id === columnId)) {
+      const valid = project.columns.map((c) => c.id).join(', ');
+      throw new ValidationError(
+        `Invalid column "${String(columnId)}" for project "${project.name}". Valid columns: ${valid}`,
+      );
+    }
+  }
+
+  /**
+   * Validates a raw columns config (array of {id, title}).
+   * Rules: 2-${MAX_COLUMNS} columns, ids are lowercase slugs, unique.
+   * Convention: first column = inbox for new tickets, last = finished.
+   */
+  private validateColumnsInput(value: unknown): ColumnDef[] {
+    if (!Array.isArray(value) || value.length < 2 || value.length > MAX_COLUMNS) {
+      throw new ValidationError(`"columns" must be an array of 2-${MAX_COLUMNS} entries like {"id": "in_progress", "title": "In Progress"}`);
+    }
+    const result: ColumnDef[] = [];
+    const seen = new Set<string>();
+    for (const entry of value) {
+      if (typeof entry !== 'object' || entry === null) {
+        throw new ValidationError('Each column must be an object with "id" and "title"');
+      }
+      const { id, title } = entry as { id?: unknown; title?: unknown };
+      if (typeof id !== 'string' || !COLUMN_ID_RE.test(id)) {
+        throw new ValidationError(`Invalid column id "${String(id)}" – use a lowercase slug (a-z, 0-9, _, -), max 32 chars`);
+      }
+      if (typeof title !== 'string' || title.trim().length === 0 || title.trim().length > 50) {
+        throw new ValidationError(`Invalid title for column "${id}" – must be 1-50 characters`);
+      }
+      if (seen.has(id)) {
+        throw new ValidationError(`Duplicate column id "${id}"`);
+      }
+      seen.add(id);
+      result.push({ id, title: title.trim() });
+    }
+    return result;
+  }
+
+  /**
+   * Validates and resolves a raw depends_on value to full ticket ids.
+   * Every dependency must be an existing ticket of the same project;
+   * self-dependencies are rejected; duplicates are removed.
+   */
+  private resolveDependencies(projectId: string, ticketId: string | null, value: unknown): string[] {
+    if (!Array.isArray(value)) {
+      throw new ValidationError('"depends_on" must be an array of ticket ids');
+    }
+    const resolved: string[] = [];
+    for (const entry of value) {
+      if (typeof entry !== 'string' || entry.trim().length === 0) {
+        throw new ValidationError('"depends_on" must contain only non-empty ticket id strings');
+      }
+      const dep = this.db.getTicket(projectId, entry.trim());
+      if (!dep) {
+        throw new NotFoundError(`Dependency ticket "${entry}" not found in this project`);
+      }
+      if (ticketId && dep.id === ticketId) {
+        throw new ValidationError('A ticket cannot depend on itself');
+      }
+      if (!resolved.includes(dep.id)) resolved.push(dep.id);
+    }
+    return resolved;
+  }
+
+  /**
+   * Rejects dependency chains that loop back to the ticket being updated
+   * (A→B→A would deadlock both tickets in the first column forever).
+   */
+  private assertNoDependencyCycle(projectId: string, ticketId: string, newDeps: string[]): void {
+    const visited = new Set<string>();
+    const stack = [...newDeps];
+    while (stack.length > 0) {
+      const currentId = stack.pop()!;
+      if (currentId === ticketId) {
+        throw new ValidationError('Dependency cycle detected – a ticket cannot (transitively) depend on itself');
+      }
+      if (visited.has(currentId)) continue;
+      visited.add(currentId);
+      const current = this.db.getTicket(projectId, currentId);
+      if (current) stack.push(...current.dependsOn);
+    }
+  }
+
+  /**
+   * Dependency gate: a ticket with unfinished dependencies may only live in
+   * the FIRST column of its board. Any move to another column is refused with
+   * an explanation of exactly which tickets are still open and where they are.
+   */
+  private assertDependenciesAllowColumn(
+    project: Project,
+    dependsOn: string[],
+    targetColumn: string,
+    ticketTitle: string,
+  ): void {
+    if (dependsOn.length === 0) return;
+    const firstColumn = project.columns[0]!.id;
+    const doneColumn = project.columns[project.columns.length - 1]!.id;
+    if (targetColumn === firstColumn) return;
+
+    const open = dependsOn
+      .map((id) => this.db.getTicket(project.id, id))
+      .filter((t): t is Ticket => t !== undefined && t.column !== doneColumn);
+
+    if (open.length === 0) return;
+
+    const list = open
+      .map((t) => `#${t.id.slice(0, 8)} "${t.title}" (in ${t.column})`)
+      .join(', ');
+    throw new ConflictError(
+      `Cannot move ticket "${ticketTitle}" to "${targetColumn}": it depends on ${open.length} unfinished ticket${open.length !== 1 ? 's' : ''}: ${list}. ` +
+      `Finish those first (move them to "${doneColumn}"), or remove the dependency, or leave this ticket in "${firstColumn}".`,
+    );
   }
 }

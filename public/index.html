@@ -10,55 +10,33 @@
 <body>
   <header>
     <div class="header-left">
-      <a href="https://aionda.com" target="_blank" rel="noopener noreferrer" class="logo-link">
+      <a href="https://github.com/AiondaDotCom/agentboard" target="_blank" rel="noopener noreferrer" class="logo-link">
         <img src="aionda_logo.png" alt="Aionda" class="logo-img">
       </a>
       <span class="logo-text" onclick="showOverview()" style="cursor:pointer">AI agentboard</span>
     </div>
     <div class="header-right">
       <span id="current-project-name" class="current-project-name" style="display:none" onclick="showOverview()"></span>
+      <button id="edit-columns-btn" class="btn-small btn-edit-columns" style="display:none" onclick="openColumnsModal()" title="Configure the board columns of this project">&#9881;&#65039; Columns</button>
       <span id="agent-count" class="badge" onclick="openAgentsModal()" title="Show registered agents &amp; API keys">0 agents</span>
       <button id="logout-btn" class="btn-logout" onclick="logout()" title="Sign out">Sign out</button>
     </div>
   </header>
 
-  <main id="board" class="board hidden">
-    <div class="column" data-column="backlog">
-      <div class="column-header">
-        <span class="column-title">BACKLOG</span>
-        <span class="column-count">0</span>
-      </div>
-      <div class="ticket-list"></div>
-    </div>
-    <div class="column" data-column="ready">
-      <div class="column-header">
-        <span class="column-title">READY</span>
-        <span class="column-count">0</span>
-      </div>
-      <div class="ticket-list"></div>
-    </div>
-    <div class="column" data-column="in_progress">
-      <div class="column-header">
-        <span class="column-title">IN PROGRESS</span>
-        <span class="column-count">0</span>
-      </div>
-      <div class="ticket-list"></div>
-    </div>
-    <div class="column" data-column="in_review">
-      <div class="column-header">
-        <span class="column-title">IN REVIEW</span>
-        <span class="column-count">0</span>
-      </div>
-      <div class="ticket-list"></div>
-    </div>
-    <div class="column" data-column="done">
-      <div class="column-header">
-        <span class="column-title">DONE</span>
-        <span class="column-count">0</span>
-      </div>
-      <div class="ticket-list"></div>
-    </div>
-  </main>
+  <!-- Columns are rendered dynamically from the project's column config -->
+  <main id="board" class="board hidden"></main>
+
+  <!-- SVG overlay for dependency arrows (click a card's dependency badge) -->
+  <svg id="dep-arrows" class="dep-arrows hidden">
+    <defs>
+      <marker id="dep-arrowhead-open" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="var(--dep-open, #ff5f6d)"></path>
+      </marker>
+      <marker id="dep-arrowhead-done" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="var(--dep-done, #34d399)"></path>
+      </marker>
+    </defs>
+  </svg>
 
   <div id="loading-screen" class="loading-screen">
     <div class="loading-content">
@@ -74,11 +52,7 @@
         <thead>
           <tr>
             <th class="col-name">Project</th>
-            <th class="col-backlog">Backlog</th>
-            <th class="col-ready">Ready</th>
-            <th class="col-in-progress">In Progress</th>
-            <th class="col-in-review">Review</th>
-            <th class="col-done">Done</th>
+            <th class="col-columns">Columns</th>
             <th class="col-total">Total</th>
           </tr>
         </thead>
@@ -121,7 +95,10 @@
         <div id="modal-author" class="modal-agent"></div>
         <div id="modal-assignee-display" class="modal-assignee-display"></div>
         <div id="modal-group-display" class="modal-group-display"></div>
+        <div id="modal-updated" class="modal-updated"></div>
       </div>
+      <div id="modal-blocked" class="modal-blocked" style="display:none"></div>
+      <div id="modal-deps" class="modal-deps" style="display:none"></div>
       <div id="modal-desc" class="modal-desc markdown-body"></div>
 
       <div class="modal-tabs">
@@ -134,6 +111,27 @@
       </div>
       <div id="tab-history" class="modal-tab-content hidden">
         <div id="modal-revisions" class="modal-revisions"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Columns Editor Modal -->
+  <div id="columns-modal" class="modal-overlay hidden" onclick="closeColumnsModal(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <div><span class="modal-title" style="font-size:18px">Board Columns</span></div>
+        <button class="modal-close" onclick="closeColumnsModal()">&times;</button>
+      </div>
+      <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px">
+        Configure the columns of this board. The <strong>first</strong> column is where new tickets land,
+        the <strong>last</strong> column counts as finished. Columns that still contain tickets cannot be removed.
+      </p>
+      <div id="columns-editor-list" class="columns-editor-list"></div>
+      <button class="btn-small" onclick="addColumnRow()">+ Add column</button>
+      <div id="columns-error" class="columns-error" style="display:none"></div>
+      <div class="columns-editor-actions">
+        <button class="btn-small" onclick="closeColumnsModal()">Cancel</button>
+        <button class="btn-small btn-save-columns" onclick="saveColumns()">Save</button>
       </div>
     </div>
   </div>

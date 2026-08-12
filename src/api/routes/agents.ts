@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import type { BoardService } from '../../services/board.service.js';
 import { createAdminAuthMiddleware } from '../middleware/auth.js';
-import { handleServiceError } from './helpers.js';
+import { handleServiceError, routeParam } from './helpers.js';
 
 export function createAgentRoutes(service: BoardService): Router {
   const router: Router = Router();
@@ -27,7 +27,7 @@ export function createAgentRoutes(service: BoardService): Router {
   // DELETE /api/agents/:id - Delete an agent (admin auth required)
   router.delete('/:id', adminAuth, (req: Request, res: Response): void => {
     try {
-      service.deleteAgent(String(req.params['id'] ?? ''));
+      service.deleteAgent(routeParam(req, 'id'));
       res.status(204).end();
     } catch (err) {
       handleServiceError(res, err);

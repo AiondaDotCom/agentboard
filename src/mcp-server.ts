@@ -35,13 +35,37 @@ export function registerMcpTools(
   mcp.tool('list_projects', 'List all projects on the board', {},
     async () => ok(service.getAllProjects(agentId)));
 
-  mcp.tool('get_project', 'Get details of a specific project',
+  mcp.tool('get_project', 'Get details of a specific project, including its board column configuration (columns array; first column = where new tickets land, last column = finished/done)',
     { project_id: z.string().describe('Project ID') },
     async ({ project_id }) => wrap(() => service.getProject(project_id, agentId)));
 
-  mcp.tool('create_project', 'Create a new project (admin)',
-    { name: z.string().describe('Project name'), description: z.string().optional().describe('Project description') },
-    async ({ name, description }) => wrap(() => service.createProject(name, description, agentId)));
+  const columnsParam = z.array(z.object({
+    id: z.string().describe('Column id slug (lowercase, e.g. "in_progress")'),
+    title: z.string().describe('Display name (e.g. "In Progress")'),
+  })).min(2).max(20).optional().describe('Board columns in order. Convention: FIRST column is where new tickets land, LAST column counts as finished (releases group claims, satisfies dependencies). Default: backlog, blocked, in_progress, rework, in_review, done.');
+
+  mcp.tool('create_project', 'Create a new project (admin). Board columns are configurable per project via "columns".',
+    {
+      name: z.string().describe('Project name'),
+      description: z.string().optional().describe('Project description'),
+      columns: columnsParam,
+    },
+    async ({ name, description, columns }) => wrap(() => service.createProject(name, description, agentId, columns)));
+
+  mcp.tool('update_project', 'Update a project: rename, change description, or reconfigure the board columns. Columns that still contain tickets cannot be removed (move the tickets first).',
+    {
+      project_id: z.string().describe('Project ID'),
+      name: z.string().optional().describe('New project name'),
+      description: z.string().optional().describe('New project description'),
+      columns: columnsParam,
+    },
+    async ({ project_id, name, description, columns }) => {
+      const updates: { name?: string; description?: string; columns?: unknown } = {};
+      if (name !== undefined) updates.name = name;
+      if (description !== undefined) updates.description = description;
+      if (columns !== undefined) updates.columns = columns;
+      return wrap(() => service.updateProject(project_id, updates, agentId));
+    });
 
   mcp.tool('delete_project', 'Delete a project (admin)',
     { project_id: z.string().describe('Project ID') },
@@ -51,7 +75,7 @@ export function registerMcpTools(
   mcp.tool('list_tickets', 'List all tickets in a project (returns summary without description – use get_ticket for full details)',
     {
       project_id: z.string().describe('Project ID'),
-      column: z.enum(['backlog', 'ready', 'in_progress', 'in_review', 'done']).optional().describe('Filter by column (e.g. in_review, done)'),
+      column: z.string().optional().describe('Filter by column id – must be one of the project\'s configured columns (see get_project)'),
       page: z.number().int().min(1).optional().describe('Page number (default: 1)'),
       per_page: z.number().int().min(1).max(100).optional().describe('Items per page (default: 50, max: 100)'),
     },
@@ -68,35 +92,44 @@ export function registerMcpTools(
     async ({ project_id, ticket_id }) =>
       wrap(() => service.getTicket(project_id, ticket_id, agentId)));
 
-  mcp.tool('create_ticket', 'Create a new ticket in a project. Descriptions support Markdown formatting (bold, lists, headings, code blocks, etc.) – please use Markdown for better readability. Use "group" to bundle related tickets that must be handled by a single agent (assigning one ticket of a group claims the whole group).', {
+  mcp.tool('create_ticket', 'Create a new ticket in a project. Descriptions support Markdown formatting (bold, lists, headings, code blocks, etc.) – please use Markdown for better readability. Use "group" to bundle related tickets that must be handled by a single agent (assigning one ticket of a group claims the whole group). Use "depends_on" for tickets that must be finished first – a ticket with unfinished dependencies can only stay in the first column.', {
     project_id: z.string().describe('Project ID'),
     title: z.string().describe('Ticket title'),
     description: z.string().optional().describe('Ticket description (supports Markdown: **bold**, *italic*, - lists, ## headings, `code`, etc.)'),
-    column: z.enum(['backlog', 'ready', 'in_progress', 'in_review', 'done']).optional().describe('Initial column (default: backlog)'),
+    column: z.string().optional().describe('Initial column id – must be one of the project\'s configured columns, see get_project (default: the project\'s first column)'),
     group: z.string().optional().describe('Group name for related tickets that only one agent should work on (e.g. tickets touching the same files). Assigning any ticket of a group claims the whole group for that agent.'),
-  }, async ({ project_id, title, description, column, group }) =>
-    wrap(() => service.createTicket(project_id, title, description, column, agentId, group)));
+    blocked_reason: z.string().optional().describe('Why this ticket cannot proceed (external dependency, missing credentials, etc.). Shown prominently on the board.'),
+    depends_on: z.array(z.string()).optional().describe('Ticket ids this ticket depends on. While any of them is not in the last (done) column, this ticket cannot be moved out of the first column.'),
+  }, async ({ project_id, title, description, column, group, blocked_reason, depends_on }) =>
+    wrap(() => service.createTicket(project_id, title, description, column, agentId, group, blocked_reason, depends_on)));
 
-  mcp.tool('update_ticket', 'Update a ticket (title, description, column, or group). Descriptions support Markdown formatting.', {
+  mcp.tool('update_ticket', 'Update a ticket (title, description, column, group, blocked_reason, or depends_on). Descriptions support Markdown formatting. Moving to a column other than the first is refused while the ticket has unfinished dependencies – the error explains which tickets must be finished first.', {
     project_id: z.string().describe('Project ID'),
     ticket_id: z.string().describe('Ticket ID'),
     title: z.string().optional().describe('New title'),
     description: z.string().optional().describe('New description (supports Markdown: **bold**, *italic*, - lists, ## headings, `code`, etc.)'),
-    column: z.enum(['backlog', 'ready', 'in_progress', 'in_review', 'done']).optional().describe('New column'),
+    column: z.string().optional().describe('New column id – must be one of the project\'s configured columns (see get_project)'),
     group: z.string().optional().describe('Group name for related tickets that only one agent should work on. Pass an empty string to remove the ticket from its group.'),
-  }, async ({ project_id, ticket_id, title, description, column, group }) => {
-    const updates: { title?: string; description?: string; column?: string; group?: string | null } = {};
+    blocked_reason: z.string().optional().describe('Why the ticket is blocked (external dependency). Pass an empty string to clear it.'),
+    depends_on: z.array(z.string()).optional().describe('Replaces the full dependency list (ticket ids that must be done first). Pass an empty array to clear all dependencies.'),
+  }, async ({ project_id, ticket_id, title, description, column, group, blocked_reason, depends_on }) => {
+    const updates: {
+      title?: string; description?: string; column?: string; group?: string | null;
+      blockedReason?: string | null; dependsOn?: unknown;
+    } = {};
     if (title !== undefined) updates.title = title;
     if (description !== undefined) updates.description = description;
     if (column !== undefined) updates.column = column;
     if (group !== undefined) updates.group = group;
+    if (blocked_reason !== undefined) updates.blockedReason = blocked_reason;
+    if (depends_on !== undefined) updates.dependsOn = depends_on;
     return wrap(() => service.updateTicket(project_id, ticket_id, updates, agentId));
   });
 
-  mcp.tool('move_ticket', 'Move a ticket to a different column', {
+  mcp.tool('move_ticket', 'Move a ticket to a different column. Refused (with an explanation of which tickets must be finished first) while the ticket has unfinished dependencies and the target is not the first column.', {
     project_id: z.string().describe('Project ID'),
     ticket_id: z.string().describe('Ticket ID'),
-    column: z.enum(['backlog', 'ready', 'in_progress', 'in_review', 'done']).describe('Target column'),
+    column: z.string().describe('Target column id – must be one of the project\'s configured columns (see get_project)'),
   }, async ({ project_id, ticket_id, column }) =>
     wrap(() => service.moveTicket(project_id, ticket_id, column, agentId)));
 
@@ -159,6 +192,7 @@ export function getOrCreateMcpAgent(service: BoardService, name: string): string
 
 const isMain = process.argv[1]?.endsWith('mcp-server.ts') || process.argv[1]?.endsWith('mcp-server.js');
 
+/* v8 ignore start -- process entry point, only runs via `npx tsx src/mcp-server.ts` */
 if (isMain) {
   const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
   const { AgentboardDB } = await import('./db/database.js');
@@ -177,3 +211,4 @@ if (isMain) {
   const transport = new StdioServerTransport();
   await mcp.connect(transport);
 }
+/* v8 ignore stop */

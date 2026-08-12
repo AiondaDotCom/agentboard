@@ -34,7 +34,12 @@ HTTP Server (src/server.ts, port 3000)
 - Frontend nutzt GraphQL WebSocket Subscriptions – kein Polling fuer Echtzeit
 - Kommentare: neueste oben (reversed)
 - Ticket-Revisions sind revisionssicher (tamper-proof audit trail)
-- **Ticket-Gruppen**: Tickets koennen per `group` gebuendelt werden (optional bei create/update). Claim-Regel im BoardService: Weist sich ein Agent ein Ticket einer Gruppe zu, gehoert ihm die ganze Gruppe – andere Agents bekommen `ConflictError` (HTTP 409). Der Claim ist aus `assignee_id` abgeleitet (kein Lock): Unassign oder alle Tickets in `done` geben die Gruppe frei. Frontend clustert Gruppen pro Spalte mit Farbcodierung (Hue aus Gruppenname) und Claim-Badge.
+- **Ticket-Gruppen**: Tickets koennen per `group` gebuendelt werden (optional bei create/update). Claim-Regel im BoardService: Weist sich ein Agent ein Ticket einer Gruppe zu, gehoert ihm die ganze Gruppe – andere Agents bekommen `ConflictError` (HTTP 409). Der Claim ist aus `assignee_id` abgeleitet (kein Lock): Unassign oder alle Tickets in der letzten Spalte geben die Gruppe frei. Frontend clustert Gruppen pro Spalte mit Farbcodierung (Hue aus Gruppenname) und Claim-Badge.
+- **Konfigurierbare Spalten pro Projekt**: `projects.columns` (JSON `[{id, title}]`). Konvention: ERSTE Spalte = Inbox fuer neue Tickets (auch Reopen-Ziel), LETZTE Spalte = fertig (Done-Semantik fuer Gruppen-Claim und Dependencies). Default fuer neue Projekte: backlog, blocked, in_progress, rework, in_review, done. Bestehende Projekte wurden per Migration auf das alte 5er-Set (mit `ready`) eingefroren. Spalten mit Tickets koennen nicht entfernt werden (erst Tickets verschieben). Aenderung via `update_project` (MCP), `PATCH /api/projects/:id` (admin) oder `PUT /api/projects/:id/columns` (Human/UI, Spalten-Editor ueber ⚙️-Button).
+- **blocked_reason**: Freitextfeld am Ticket (warum es extern blockiert ist), prominent auf Karte + Modal, revisionssicher geloggt. Leerer String loescht es.
+- **depends_on**: Array von Ticket-IDs am Ticket. Regel: Solange eine Dependency nicht in der LETZTEN Spalte ist, darf das Ticket nur in der ERSTEN Spalte liegen – jede andere Bewegung wirft `ConflictError` (409) mit Begruendung, welche Tickets in welcher Spalte noch offen sind. Zyklen werden beim Setzen abgelehnt. Frontend: Dep-Badge auf der Karte (rot = offen, gruen = alle fertig), Klick zeichnet SVG-Pfeile zu den Dependency-Karten; Modal listet Dependencies mit Status. Tabelle `ticket_dependencies` (CASCADE bei Ticket-Loeschung).
+- **Zuletzt angefasst**: `updated_at` wird auf jeder Karte (🕒) und im Modal angezeigt.
+- **Testabdeckung**: 100% (statements/branches/functions/lines) fuer alle `src/`-Module ausser `server.ts` (Bootstrap, via Playwright-E2E abgedeckt). Thresholds in vitest.config.ts stehen auf 100 – neue Features brauchen vollstaendige Tests.
 
 ## Scripts
 
@@ -51,4 +56,4 @@ claude mcp add -t http -s user agentboard http://localhost:3000/mcp
 ```
 Server muss laufen (`./run.sh`) damit MCP erreichbar ist.
 
-16 Tools: list_projects, create_project, get_project, delete_project, list_tickets, get_ticket, create_ticket, update_ticket, move_ticket, assign_ticket, delete_ticket, add_comment, get_comments, get_ticket_history, list_agents, whoami
+17 Tools: list_projects, create_project, get_project, update_project, delete_project, list_tickets, get_ticket, create_ticket, update_ticket, move_ticket, assign_ticket, delete_ticket, add_comment, get_comments, get_ticket_history, list_agents, whoami

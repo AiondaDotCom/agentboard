@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS projects (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
+  columns TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -25,11 +26,20 @@ CREATE TABLE IF NOT EXISTS tickets (
   column_name TEXT NOT NULL DEFAULT 'backlog',
   position INTEGER NOT NULL DEFAULT 0,
   group_name TEXT,
+  blocked_reason TEXT,
   agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
   assignee_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS ticket_dependencies (
+  ticket_id TEXT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+  depends_on_id TEXT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+  PRIMARY KEY (ticket_id, depends_on_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_deps_depends_on ON ticket_dependencies(depends_on_id);
 
 CREATE TABLE IF NOT EXISTS comments (
   id TEXT PRIMARY KEY,

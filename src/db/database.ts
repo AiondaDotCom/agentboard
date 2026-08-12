@@ -19,9 +19,11 @@ import type {
   AuditEntry,
   TicketRevision,
   Column,
+  ColumnDef,
   TicketListOptions,
   PaginatedResult,
 } from '../types.js';
+import { DEFAULT_COLUMNS, LEGACY_COLUMNS } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Row interfaces – mirror the exact snake_case column names returned by SQLite
@@ -38,6 +40,7 @@ interface ProjectRow {
   id: string;
   name: string;
   description: string;
+  columns: string | null;
   created_at: string;
 }
 
@@ -49,12 +52,20 @@ interface TicketRow {
   column_name: string;
   position: number;
   group_name: string | null;
+  blocked_reason: string | null;
   agent_id: string | null;
   assignee_id: string | null;
   comment_count: number;
+  depends_on: string | null;
   created_at: string;
   updated_at: string;
 }
+
+// Shared SELECT for tickets: comment count + comma-joined dependency ids.
+const TICKET_SELECT = `SELECT t.*,
+  (SELECT COUNT(*) FROM comments c WHERE c.ticket_id = t.id) AS comment_count,
+  (SELECT GROUP_CONCAT(d.depends_on_id) FROM ticket_dependencies d WHERE d.ticket_id = t.id) AS depends_on
+  FROM tickets t`;
 
 interface CommentRow {
   id: string;
@@ -125,11 +136,29 @@ export class AgentboardDB {
     const hasTickets = this.db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tickets'")
       .get();
-    if (!hasTickets) return;
+    if (hasTickets) {
+      const columns = this.db.prepare('PRAGMA table_info(tickets)').all() as { name: string }[];
+      if (!columns.some((c) => c.name === 'group_name')) {
+        this.db.exec('ALTER TABLE tickets ADD COLUMN group_name TEXT');
+      }
+      if (!columns.some((c) => c.name === 'blocked_reason')) {
+        this.db.exec('ALTER TABLE tickets ADD COLUMN blocked_reason TEXT');
+      }
+    }
 
-    const columns = this.db.prepare('PRAGMA table_info(tickets)').all() as { name: string }[];
-    if (!columns.some((c) => c.name === 'group_name')) {
-      this.db.exec('ALTER TABLE tickets ADD COLUMN group_name TEXT');
+    const hasProjects = this.db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'projects'")
+      .get();
+    if (hasProjects) {
+      const columns = this.db.prepare('PRAGMA table_info(projects)').all() as { name: string }[];
+      if (!columns.some((c) => c.name === 'columns')) {
+        this.db.exec('ALTER TABLE projects ADD COLUMN columns TEXT');
+        // Projects created before per-project columns keep the old 5-column set
+        // so their existing tickets (e.g. in "ready") stay valid.
+        this.db
+          .prepare('UPDATE projects SET columns = ? WHERE columns IS NULL')
+          .run(JSON.stringify(LEGACY_COLUMNS));
+      }
     }
   }
 
@@ -160,10 +189,20 @@ export class AgentboardDB {
   }
 
   private mapProjectRow(row: ProjectRow): Project {
+    let columns: ColumnDef[] = DEFAULT_COLUMNS;
+    if (row.columns) {
+      try {
+        const parsed = JSON.parse(row.columns) as ColumnDef[];
+        if (Array.isArray(parsed) && parsed.length > 0) columns = parsed;
+      } catch {
+        // fall through to default
+      }
+    }
     return {
       id: row.id,
       name: row.name,
       description: row.description,
+      columns,
       createdAt: row.created_at,
     };
   }
@@ -177,6 +216,8 @@ export class AgentboardDB {
       column: row.column_name as Column,
       position: row.position,
       group: row.group_name ?? null,
+      blockedReason: row.blocked_reason ?? null,
+      dependsOn: row.depends_on ? row.depends_on.split(',') : [],
       agentId: row.agent_id,
       assigneeId: row.assignee_id ?? null,
       commentCount: row.comment_count ?? 0,
@@ -325,20 +366,39 @@ export class AgentboardDB {
   // Projects
   // -----------------------------------------------------------------------
 
-  createProject(name: string, description?: string): Project {
+  createProject(name: string, description?: string, columns?: ColumnDef[]): Project {
     const id = uuidv4();
     const desc = description ?? '';
+    const cols = columns ?? DEFAULT_COLUMNS;
 
     const stmt = this.db.prepare(
-      'INSERT INTO projects (id, name, description) VALUES (?, ?, ?)',
+      'INSERT INTO projects (id, name, description, columns) VALUES (?, ?, ?, ?)',
     );
-    stmt.run(id, name, desc);
+    stmt.run(id, name, desc, JSON.stringify(cols));
 
     const row = this.db
       .prepare('SELECT * FROM projects WHERE id = ?')
       .get(id) as ProjectRow;
 
     return this.mapProjectRow(row);
+  }
+
+  updateProject(
+    id: string,
+    updates: { name?: string; description?: string; columns?: ColumnDef[] },
+  ): Project | undefined {
+    const existing = this.getProject(id);
+    if (!existing) return undefined;
+
+    const newName = updates.name ?? existing.name;
+    const newDescription = updates.description ?? existing.description;
+    const newColumns = updates.columns ?? existing.columns;
+
+    this.db
+      .prepare('UPDATE projects SET name = ?, description = ?, columns = ? WHERE id = ?')
+      .run(newName, newDescription, JSON.stringify(newColumns), id);
+
+    return this.getProject(id);
   }
 
   getProject(id: string): Project | undefined {
@@ -376,6 +436,8 @@ export class AgentboardDB {
     column?: Column,
     agentId?: string | null,
     group?: string | null,
+    blockedReason?: string | null,
+    dependsOn?: string[],
   ): Ticket {
     const id = uuidv4();
     const desc = description ?? '';
@@ -393,15 +455,30 @@ export class AgentboardDB {
     const position = maxPos.max_pos + 1;
 
     const stmt = this.db.prepare(
-      'INSERT INTO tickets (id, project_id, title, description, column_name, position, agent_id, group_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO tickets (id, project_id, title, description, column_name, position, agent_id, group_name, blocked_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     );
-    stmt.run(id, projectId, title, desc, col, position, agent, groupName);
+    stmt.run(id, projectId, title, desc, col, position, agent, groupName, blockedReason ?? null);
+
+    if (dependsOn && dependsOn.length > 0) {
+      this.setTicketDependencies(id, dependsOn);
+    }
 
     const row = this.db
-      .prepare('SELECT t.*, (SELECT COUNT(*) FROM comments c WHERE c.ticket_id = t.id) AS comment_count FROM tickets t WHERE t.id = ?')
+      .prepare(`${TICKET_SELECT} WHERE t.id = ?`)
       .get(id) as TicketRow;
 
     return this.mapTicketRow(row);
+  }
+
+  /** Replace the full dependency list of a ticket. */
+  setTicketDependencies(ticketId: string, dependsOn: string[]): void {
+    this.db.prepare('DELETE FROM ticket_dependencies WHERE ticket_id = ?').run(ticketId);
+    const insert = this.db.prepare(
+      'INSERT OR IGNORE INTO ticket_dependencies (ticket_id, depends_on_id) VALUES (?, ?)',
+    );
+    for (const depId of dependsOn) {
+      insert.run(ticketId, depId);
+    }
   }
 
   getTicket(projectId: string, ticketId: string): Ticket | undefined {
@@ -410,13 +487,13 @@ export class AgentboardDB {
 
     // Try exact match first
     let row = this.db
-      .prepare('SELECT t.*, (SELECT COUNT(*) FROM comments c WHERE c.ticket_id = t.id) AS comment_count FROM tickets t WHERE t.id = ? AND t.project_id = ?')
+      .prepare(`${TICKET_SELECT} WHERE t.id = ? AND t.project_id = ?`)
       .get(cleanId, projectId) as TicketRow | undefined;
 
     // Fallback: prefix match for short IDs (e.g. "df69fbfa" → first 8 chars of UUID)
     if (!row && cleanId.length < 36) {
       const rows = this.db
-        .prepare('SELECT t.*, (SELECT COUNT(*) FROM comments c WHERE c.ticket_id = t.id) AS comment_count FROM tickets t WHERE t.id LIKE ? AND t.project_id = ?')
+        .prepare(`${TICKET_SELECT} WHERE t.id LIKE ? AND t.project_id = ?`)
         .all(cleanId + '%', projectId) as TicketRow[];
       if (rows.length === 1) row = rows[0];
     }
@@ -447,8 +524,7 @@ export class AgentboardDB {
 
     const rows = this.db
       .prepare(
-        `SELECT t.*, (SELECT COUNT(*) FROM comments c WHERE c.ticket_id = t.id) AS comment_count
-         FROM tickets t WHERE ${where} ORDER BY t.column_name, t.position ASC LIMIT ? OFFSET ?`,
+        `${TICKET_SELECT} WHERE ${where} ORDER BY t.column_name, t.position ASC LIMIT ? OFFSET ?`,
       )
       .all(...params, perPage, offset) as TicketRow[];
 
@@ -470,6 +546,8 @@ export class AgentboardDB {
       column?: Column;
       group?: string | null;
       agentId?: string | null;
+      blockedReason?: string | null;
+      dependsOn?: string[];
     },
     actorId?: string | null,
   ): Ticket | undefined {
@@ -484,23 +562,32 @@ export class AgentboardDB {
     const newGroup = 'group' in updates ? (updates.group ?? null) : existing.group;
     const newAgentId =
       'agentId' in updates ? (updates.agentId ?? null) : existing.agentId;
+    const newBlockedReason =
+      'blockedReason' in updates ? (updates.blockedReason ?? null) : existing.blockedReason;
+    const newDependsOn = updates.dependsOn ?? existing.dependsOn;
 
     // Log revisions for each changed field BEFORE applying the update
     const actor = actorId !== undefined ? actorId : null;
     if (newTitle !== existing.title) {
-      this.logRevision(ticketId, actor, 'title', existing.title, newTitle);
+      this.logRevision(existing.id, actor, 'title', existing.title, newTitle);
     }
     if (newDescription !== existing.description) {
-      this.logRevision(ticketId, actor, 'description', existing.description, newDescription);
+      this.logRevision(existing.id, actor, 'description', existing.description, newDescription);
     }
     if (newColumn !== existing.column) {
-      this.logRevision(ticketId, actor, 'column', existing.column, newColumn);
+      this.logRevision(existing.id, actor, 'column', existing.column, newColumn);
     }
     if (newGroup !== existing.group) {
-      this.logRevision(ticketId, actor, 'group', existing.group ?? '', newGroup ?? '');
+      this.logRevision(existing.id, actor, 'group', existing.group ?? '', newGroup ?? '');
     }
     if (newAgentId !== existing.agentId) {
-      this.logRevision(ticketId, actor, 'agentId', existing.agentId ?? '', newAgentId ?? '');
+      this.logRevision(existing.id, actor, 'agentId', existing.agentId ?? '', newAgentId ?? '');
+    }
+    if (newBlockedReason !== existing.blockedReason) {
+      this.logRevision(existing.id, actor, 'blocked_reason', existing.blockedReason ?? '', newBlockedReason ?? '');
+    }
+    if (updates.dependsOn && newDependsOn.join(',') !== existing.dependsOn.join(',')) {
+      this.logRevision(existing.id, actor, 'depends_on', existing.dependsOn.join(', '), newDependsOn.join(', '));
     }
 
     // If column changed, compute new position at the end of target column
@@ -517,7 +604,7 @@ export class AgentboardDB {
     this.db
       .prepare(
         `UPDATE tickets
-         SET title = ?, description = ?, column_name = ?, position = ?, group_name = ?, agent_id = ?, updated_at = datetime('now')
+         SET title = ?, description = ?, column_name = ?, position = ?, group_name = ?, agent_id = ?, blocked_reason = ?, updated_at = datetime('now')
          WHERE id = ? AND project_id = ?`,
       )
       .run(
@@ -527,11 +614,16 @@ export class AgentboardDB {
         newPosition,
         newGroup,
         newAgentId,
-        ticketId,
+        newBlockedReason,
+        existing.id,
         projectId,
       );
 
-    return this.getTicket(projectId, ticketId);
+    if (updates.dependsOn) {
+      this.setTicketDependencies(existing.id, newDependsOn);
+    }
+
+    return this.getTicket(projectId, existing.id);
   }
 
   moveTicket(
@@ -547,8 +639,7 @@ export class AgentboardDB {
   getTicketsByGroup(projectId: string, group: string): Ticket[] {
     const rows = this.db
       .prepare(
-        `SELECT t.*, (SELECT COUNT(*) FROM comments c WHERE c.ticket_id = t.id) AS comment_count
-         FROM tickets t WHERE t.project_id = ? AND t.group_name = ? ORDER BY t.position ASC`,
+        `${TICKET_SELECT} WHERE t.project_id = ? AND t.group_name = ? ORDER BY t.position ASC`,
       )
       .all(projectId, group) as TicketRow[];
 

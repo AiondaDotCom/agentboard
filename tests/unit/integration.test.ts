@@ -175,15 +175,15 @@ describe('Integration: Full API Workflow', () => {
     ticketAuthId = res.body.id;
   });
 
-  it('should create ticket "Write tests" in ready (code-writer)', async () => {
+  it('should create ticket "Write tests" in in_progress (code-writer)', async () => {
     const res = await request(app)
       .post(`/api/projects/${projectId}/tickets`)
       .set('X-Api-Key', codeWriterKey)
-      .send({ title: 'Write tests', description: 'Unit and integration tests', column: 'ready' });
+      .send({ title: 'Write tests', description: 'Unit and integration tests', column: 'in_progress' });
 
     expect(res.status).toBe(201);
     expect(res.body.title).toBe('Write tests');
-    expect(res.body.column).toBe('ready');
+    expect(res.body.column).toBe('in_progress');
     expect(res.body.agentId).toBe(codeWriterId);
 
     ticketTestsId = res.body.id;

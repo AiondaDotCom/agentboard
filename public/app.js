@@ -8,6 +8,44 @@ let ws = null;
 let agents = {};
 let activities = [];
 
+// Column config of the currently opened project: [{id, title}, ...]
+// First column = inbox for new tickets, last column = finished/done.
+const FALLBACK_COLUMNS = [
+  { id: 'backlog', title: 'Backlog' },
+  { id: 'blocked', title: 'Blocked' },
+  { id: 'in_progress', title: 'In Progress' },
+  { id: 'rework', title: 'Rework' },
+  { id: 'in_review', title: 'In Review' },
+  { id: 'done', title: 'Done' },
+];
+let currentProjectColumns = FALLBACK_COLUMNS;
+let boardTickets = []; // last rendered ticket list (for dependency lookups)
+
+function doneColumnId() {
+  return currentProjectColumns[currentProjectColumns.length - 1].id;
+}
+
+function columnTitle(colId, columns) {
+  const cols = columns || currentProjectColumns;
+  const col = cols.find(c => c.id === colId);
+  return col ? col.title : colId.replace(/_/g, ' ');
+}
+
+// Well-known column ids keep their theme color; custom ones get a stable hue.
+const KNOWN_COLUMN_COLORS = {
+  backlog: 'var(--column-backlog)',
+  ready: 'var(--column-ready)',
+  in_progress: 'var(--column-in-progress)',
+  in_review: 'var(--column-in-review)',
+  done: 'var(--column-done)',
+  blocked: 'var(--column-blocked)',
+  rework: 'var(--column-rework)',
+};
+
+function columnColor(colId) {
+  return KNOWN_COLUMN_COLORS[colId] || `hsl(${groupHue(colId)}, 70%, 65%)`;
+}
+
 // ---------------------------------------------------------------------------
 // Agent viewing tracker – ticketId -> Map<agentId, {name, timer}>
 // ---------------------------------------------------------------------------
@@ -53,12 +91,13 @@ async function graphqlQuery(query) {
 }
 
 let overviewPollTimer = null;
-let prevOverviewStats = {}; // projectId -> { backlog, ready, ... , total }
+let prevOverviewStats = {}; // projectId -> JSON string of per-column counts
 
 async function loadProjectOverview() {
   const data = await graphqlQuery(`{
     projects {
       id name description
+      columns { id title }
       tickets { column }
     }
   }`);
@@ -80,11 +119,33 @@ async function loadProjectOverview() {
   const newStats = {};
 
   projects.forEach(p => {
-    const stats = { backlog: 0, ready: 0, in_progress: 0, in_review: 0, done: 0 };
-    p.tickets.forEach(t => { if (stats[t.column] !== undefined) stats[t.column]++; });
-    stats.total = Object.values(stats).reduce((a, b) => a + b, 0);
-    newStats[p.id] = stats;
+    const cols = (p.columns && p.columns.length) ? p.columns : FALLBACK_COLUMNS;
+    const counts = {};
+    cols.forEach(c => { counts[c.id] = 0; });
+    p.tickets.forEach(t => { if (counts[t.column] !== undefined) counts[t.column]++; });
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    newStats[p.id] = JSON.stringify({ counts, total, cols: cols.map(c => c.id) });
   });
+
+  function buildRowHtml(p) {
+    const cols = (p.columns && p.columns.length) ? p.columns : FALLBACK_COLUMNS;
+    const { counts, total } = JSON.parse(newStats[p.id]);
+    const chips = cols.map(c => `
+      <span class="stat-chip${counts[c.id] === 0 ? ' zero' : ''}" style="--chip-color:${columnColor(c.id)}">
+        <span class="stat-chip-label">${escapeHtml(c.title)}</span>
+        <span class="overview-count">${counts[c.id]}</span>
+      </span>`).join('');
+
+    return `
+      <td>
+        <div class="overview-project-name">${escapeHtml(p.name)}</div>
+        <div class="overview-project-id" title="Click to copy full ID" onclick="event.stopPropagation(); copyId('${p.id}', this)">#${p.id.slice(0, 8)}</div>
+        ${p.description ? `<div class="overview-project-desc">${escapeHtml(p.description)}</div>` : ''}
+      </td>
+      <td class="overview-cols">${chips}</td>
+      <td class="overview-count col-total">${total}</td>
+    `;
+  }
 
   // Check if we can do an in-place update (same projects, same order)
   const existingRows = tbody.querySelectorAll('tr');
@@ -92,64 +153,24 @@ async function loadProjectOverview() {
     projects.every((p, i) => existingRows[i]?.dataset.projectId === p.id);
 
   if (canPatch) {
-    // In-place update: only update changed cells with animation
-    const cols = ['backlog', 'ready', 'in_progress', 'in_review', 'done', 'total'];
+    // In-place update: rebuild only rows whose stats changed, with a flash
     projects.forEach((p, i) => {
+      if (prevOverviewStats[p.id] === newStats[p.id]) return;
       const row = existingRows[i];
-      const cells = row.querySelectorAll('.overview-count');
-      const prev = prevOverviewStats[p.id] || {};
-      const cur = newStats[p.id];
-
-      cols.forEach((col, ci) => {
-        const cell = cells[ci];
-        if (!cell) return;
-        const oldVal = prev[col] ?? -1;
-        const newVal = cur[col];
-        if (oldVal !== newVal) {
-          cell.textContent = newVal;
-          cell.className = `overview-count col-${col.replace('_', '-')}${newVal === 0 ? ' zero' : ''}`;
-          cell.classList.add('overview-flash');
-          cell.addEventListener('animationend', () => cell.classList.remove('overview-flash'), { once: true });
-
-          // Ticker delta badge (like a stock ticker)
-          if (oldVal >= 0) {
-            const delta = newVal - oldVal;
-            const badge = document.createElement('span');
-            badge.className = `overview-delta ${delta > 0 ? 'delta-up' : 'delta-down'}`;
-            badge.textContent = delta > 0 ? `+${delta}` : `${delta}`;
-            cell.style.position = 'relative';
-            cell.appendChild(badge);
-            badge.addEventListener('animationend', () => badge.remove(), { once: true });
-          }
-        }
-      });
+      row.innerHTML = buildRowHtml(p);
+      row.classList.add('overview-flash');
+      row.addEventListener('animationend', () => row.classList.remove('overview-flash'), { once: true });
     });
   } else {
     // Full rebuild (project list changed)
     tbody.innerHTML = '';
-    const cols = ['backlog', 'ready', 'in_progress', 'in_review', 'done', 'total'];
-
     projects.forEach(p => {
-      const stats = newStats[p.id];
       const tr = document.createElement('tr');
       tr.dataset.projectId = p.id;
       tr.onclick = () => selectProject(p.id, p.name);
-
-      function cell(val, col) {
-        return `<td class="overview-count col-${col.replace('_', '-')}${val === 0 ? ' zero' : ''}">${val}</td>`;
-      }
+      tr.innerHTML = buildRowHtml(p);
 
       const isNew = !!prevOverviewStats[p.id] === false && Object.keys(prevOverviewStats).length > 0;
-
-      tr.innerHTML = `
-        <td>
-          <div class="overview-project-name">${escapeHtml(p.name)}</div>
-          <div class="overview-project-id" title="Click to copy full ID" onclick="event.stopPropagation(); copyId('${p.id}', this)">#${p.id.slice(0, 8)}</div>
-          ${p.description ? `<div class="overview-project-desc">${escapeHtml(p.description)}</div>` : ''}
-        </td>
-        ${cols.map(c => cell(stats[c], c)).join('')}
-      `;
-
       if (isNew) {
         tr.classList.add('overview-row-new');
         tr.addEventListener('animationend', () => tr.classList.remove('overview-row-new'), { once: true });
@@ -258,13 +279,15 @@ function groupHue(name) {
 }
 
 // group -> claiming agent ({id, name}) or null while the group is free.
-// A group is claimed while any of its tickets outside "done" has an assignee.
+// A group is claimed while any of its tickets outside the last (finished)
+// column has an assignee.
 function computeGroupClaims(tickets) {
+  const doneId = doneColumnId();
   const claims = {};
   tickets.forEach(t => {
     if (!t.group) return;
     if (!(t.group in claims)) claims[t.group] = null;
-    if (t.column !== 'done' && t.assigneeId && !claims[t.group]) {
+    if (t.column !== doneId && t.assigneeId && !claims[t.group]) {
       claims[t.group] = agents[t.assigneeId] || { id: t.assigneeId, name: '???' };
     }
   });
@@ -290,8 +313,31 @@ function createGroupWrapper(group, claimer) {
 // Rendering (with FLIP move animation)
 // ---------------------------------------------------------------------------
 
+// Build the column skeleton from the project's column config.
+function renderBoardColumns() {
+  const board = document.getElementById('board');
+  board.innerHTML = '';
+  board.style.gridTemplateColumns = `repeat(${currentProjectColumns.length}, 1fr)`;
+  currentProjectColumns.forEach(col => {
+    const div = document.createElement('div');
+    div.className = 'column';
+    div.dataset.column = col.id;
+    div.style.setProperty('--col-color', columnColor(col.id));
+    div.innerHTML = `
+      <div class="column-header">
+        <span class="column-title">${escapeHtml(col.title.toUpperCase())}</span>
+        <span class="column-count">0</span>
+      </div>
+      <div class="ticket-list"></div>
+    `;
+    board.appendChild(div);
+  });
+}
+
 function renderBoard(tickets) {
-  const columns = ['backlog', 'ready', 'in_progress', 'in_review', 'done'];
+  boardTickets = tickets;
+  clearDependencyArrows();
+  const columns = currentProjectColumns.map(c => c.id);
 
   // 1. Snapshot old positions
   const oldState = prevTicketState;
@@ -442,16 +488,32 @@ function createTicketCard(ticket) {
 
   const author = ticket.agentId ? (agents[ticket.agentId] || { name: '???' }) : null;
   const assignee = ticket.assigneeId ? (agents[ticket.assigneeId] || { name: '???' }) : null;
-  const isDone = ticket.column === 'done';
+  const doneId = doneColumnId();
+  const isDone = ticket.column === doneId;
+
+  // Dependency badge: red while any dependency is unfinished, green when all done
+  const deps = ticket.dependsOn || [];
+  const openDeps = deps.filter(id => {
+    const dep = boardTickets.find(t => t.id === id);
+    return dep && dep.column !== doneId;
+  });
+  const depBadge = deps.length > 0
+    ? `<span class="ticket-deps ${openDeps.length > 0 ? 'deps-open' : 'deps-done'}"
+         title="Depends on ${deps.length} ticket${deps.length !== 1 ? 's' : ''} (${openDeps.length} unfinished) – click to show arrows"
+         onclick="event.stopPropagation(); toggleDependencyArrows('${ticket.id}')">&#x2B07;&#xFE0F; ${openDeps.length > 0 ? `${openDeps.length}/${deps.length}` : deps.length}</span>`
+    : '';
 
   card.innerHTML = `
     <div class="ticket-id" title="Click to copy full ID" onclick="event.stopPropagation(); copyId('${ticket.id}', this)">#${ticket.id.slice(0, 8)}</div>
     <div class="ticket-title">${escapeHtml(ticket.title)}</div>
+    ${ticket.blockedReason ? `<div class="ticket-blocked" title="Blocked reason">&#x26d4; ${escapeHtml(ticket.blockedReason)}</div>` : ''}
     ${ticket.description ? `<div class="ticket-desc">${escapeHtml(ticket.description)}</div>` : ''}
     <div class="ticket-meta">
       ${author ? `<span class="ticket-agent" title="Author">&#x270d;&#xfe0f; ${escapeHtml(author.name)}</span>` : '<span></span>'}
       ${assignee ? `<span class="ticket-assignee" title="Assigned to">&#x1f527; ${escapeHtml(assignee.name)}</span>` : ''}
+      ${depBadge}
       ${ticket.commentCount > 0 ? `<span class="ticket-comment-count" title="${ticket.commentCount} comment${ticket.commentCount !== 1 ? 's' : ''}">&#x1f4ac; ${ticket.commentCount}</span>` : ''}
+      <span class="ticket-updated" title="Last touched">&#x1f552; ${formatTime(ticket.updatedAt)}</span>
     </div>
     <div class="ticket-actions">
       ${isDone
@@ -466,6 +528,82 @@ function createTicketCard(ticket) {
 
   return card;
 }
+
+// ---------------------------------------------------------------------------
+// Dependency arrows (click a card's dependency badge to visualize them)
+// ---------------------------------------------------------------------------
+
+let depArrowsTicketId = null;
+
+function clearDependencyArrows() {
+  depArrowsTicketId = null;
+  const svg = document.getElementById('dep-arrows');
+  if (svg) {
+    svg.classList.add('hidden');
+    svg.querySelectorAll('path.dep-line').forEach(p => p.remove());
+  }
+  document.querySelectorAll('.dep-source, .dep-target').forEach(el => {
+    el.classList.remove('dep-source', 'dep-target', 'dep-target-done');
+  });
+}
+
+function toggleDependencyArrows(ticketId) {
+  if (depArrowsTicketId === ticketId) {
+    clearDependencyArrows();
+    return;
+  }
+  clearDependencyArrows();
+
+  const ticket = boardTickets.find(t => t.id === ticketId);
+  const sourceCard = document.querySelector(`.ticket-card[data-ticket-id="${ticketId}"]`);
+  if (!ticket || !sourceCard || !(ticket.dependsOn || []).length) return;
+
+  const svg = document.getElementById('dep-arrows');
+  const doneId = doneColumnId();
+  depArrowsTicketId = ticketId;
+  sourceCard.classList.add('dep-source');
+
+  const srcRect = sourceCard.getBoundingClientRect();
+
+  ticket.dependsOn.forEach(depId => {
+    const targetCard = document.querySelector(`.ticket-card[data-ticket-id="${depId}"]`);
+    if (!targetCard) return;
+    const dep = boardTickets.find(t => t.id === depId);
+    const isDepDone = dep && dep.column === doneId;
+
+    targetCard.classList.add('dep-target');
+    if (isDepDone) targetCard.classList.add('dep-target-done');
+
+    const tgtRect = targetCard.getBoundingClientRect();
+
+    // Start at the source edge facing the target, end at the target's near edge
+    const goingRight = tgtRect.left > srcRect.right;
+    const x1 = goingRight ? srcRect.right : (tgtRect.right < srcRect.left ? srcRect.left : srcRect.left + srcRect.width / 2);
+    const y1 = srcRect.top + srcRect.height / 2;
+    const x2 = goingRight ? tgtRect.left : (tgtRect.right < srcRect.left ? tgtRect.right : tgtRect.left + tgtRect.width / 2);
+    const y2 = tgtRect.top + tgtRect.height / 2;
+
+    const dx = Math.max(60, Math.abs(x2 - x1) / 2);
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('class', `dep-line ${isDepDone ? 'dep-line-done' : 'dep-line-open'}`);
+    path.setAttribute('d', `M ${x1} ${y1} C ${x1 + (goingRight ? dx : -dx)} ${y1}, ${x2 + (goingRight ? -dx : dx)} ${y2}, ${x2} ${y2}`);
+    path.setAttribute('marker-end', `url(#dep-arrowhead-${isDepDone ? 'done' : 'open'})`);
+    svg.appendChild(path);
+  });
+
+  svg.classList.remove('hidden');
+}
+
+// Any click outside a dependency badge dismisses the arrows
+document.addEventListener('click', (e) => {
+  if (depArrowsTicketId && !e.target.closest('.ticket-deps')) {
+    clearDependencyArrows();
+  }
+});
+window.addEventListener('resize', clearDependencyArrows);
+window.addEventListener('scroll', clearDependencyArrows, true);
+
+window.toggleDependencyArrows = toggleDependencyArrows;
 
 function createActivityItem(a) {
   const agent = a.agentId
@@ -593,8 +731,9 @@ async function openModal(projectId, ticketId) {
   modalIdEl.title = 'Click to copy full ID';
   modalIdEl.onclick = () => copyId(ticket.id, modalIdEl);
   const badge = document.getElementById('modal-column-badge');
-  badge.textContent = ticket.column.replace(/_/g, ' ');
+  badge.textContent = columnTitle(ticket.column);
   badge.className = 'modal-column-badge ' + ticket.column;
+  badge.style.setProperty('--col-color', columnColor(ticket.column));
 
   // Title + author
   document.getElementById('modal-title').textContent = ticket.title;
@@ -614,6 +753,48 @@ async function openModal(projectId, ticketId) {
   const groupDisplay = document.getElementById('modal-group-display');
   if (groupDisplay) {
     groupDisplay.textContent = ticket.group ? `\u{26d3}\u{fe0f} Group: ${ticket.group}` : '';
+  }
+
+  // Last touched
+  const updatedEl = document.getElementById('modal-updated');
+  if (updatedEl) {
+    updatedEl.textContent = `\u{1f552} Updated ${formatTime(ticket.updatedAt)}`;
+  }
+
+  // Blocked reason (prominent when set)
+  const blockedEl = document.getElementById('modal-blocked');
+  if (blockedEl) {
+    if (ticket.blockedReason) {
+      blockedEl.innerHTML = `\u{26d4} <strong>Blocked:</strong> ${escapeHtml(ticket.blockedReason)}`;
+      blockedEl.style.display = '';
+    } else {
+      blockedEl.style.display = 'none';
+    }
+  }
+
+  // Dependencies (with live status of each dependency ticket)
+  const depsEl = document.getElementById('modal-deps');
+  if (depsEl) {
+    const deps = ticket.dependsOn || [];
+    if (deps.length > 0) {
+      const doneId = doneColumnId();
+      const items = deps.map(depId => {
+        const dep = boardTickets.find(t => t.id === depId);
+        if (!dep) return `<div class="modal-dep-item">\u{2753} #${escapeHtml(depId.slice(0, 8))} (not found)</div>`;
+        const done = dep.column === doneId;
+        return `
+          <div class="modal-dep-item ${done ? 'dep-done' : 'dep-open'}">
+            ${done ? '\u{2705}' : '\u{23f3}'}
+            <span class="modal-dep-id">#${dep.id.slice(0, 8)}</span>
+            <span class="modal-dep-title">${escapeHtml(dep.title)}</span>
+            <span class="modal-dep-col">${escapeHtml(columnTitle(dep.column))}</span>
+          </div>`;
+      }).join('');
+      depsEl.innerHTML = `<div class="modal-deps-label">\u{2B07}\u{FE0F} Depends on:</div>${items}`;
+      depsEl.style.display = '';
+    } else {
+      depsEl.style.display = 'none';
+    }
   }
 
   // Description (Markdown rendered, monospace font for ASCII art)
@@ -726,6 +907,109 @@ function handleCommentAdded(data) {
 window.openModal = openModal;
 window.closeModal = closeModal;
 window.switchTab = switchTab;
+
+// ---------------------------------------------------------------------------
+// Columns Editor Modal (per-project board columns)
+// ---------------------------------------------------------------------------
+
+function slugifyColumnId(title) {
+  return title
+    .toLowerCase()
+    .replace(/[äöüß]/g, (c) => ({ 'ä': 'ae', 'ö': 'oe', 'ü': 'ue', 'ß': 'ss' }[c]))
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 32) || 'col';
+}
+
+function columnEditorRow(col) {
+  const row = document.createElement('div');
+  row.className = 'columns-editor-row';
+  row.dataset.colId = col.id || '';
+  row.innerHTML = `
+    <span class="columns-editor-drag">&#x2630;</span>
+    <input type="text" class="columns-editor-title" value="${escapeHtml(col.title)}" placeholder="Column name" maxlength="50">
+    <span class="columns-editor-id">${col.id ? escapeHtml(col.id) : ''}</span>
+    <button class="btn-small" title="Move up" onclick="moveColumnRow(this, -1)">&#x25B2;</button>
+    <button class="btn-small" title="Move down" onclick="moveColumnRow(this, 1)">&#x25BC;</button>
+    <button class="btn-small btn-remove-column" title="Remove column" onclick="this.closest('.columns-editor-row').remove()">&#x2715;</button>
+  `;
+  return row;
+}
+
+function openColumnsModal() {
+  if (!currentProjectId) return;
+  const list = document.getElementById('columns-editor-list');
+  list.innerHTML = '';
+  currentProjectColumns.forEach(col => list.appendChild(columnEditorRow(col)));
+  const errEl = document.getElementById('columns-error');
+  errEl.style.display = 'none';
+  document.getElementById('columns-modal').classList.remove('hidden');
+}
+
+function closeColumnsModal(event) {
+  if (event && event.target !== event.currentTarget) return;
+  document.getElementById('columns-modal').classList.add('hidden');
+}
+
+function addColumnRow() {
+  document.getElementById('columns-editor-list').appendChild(columnEditorRow({ id: '', title: '' }));
+}
+
+function moveColumnRow(btn, direction) {
+  const row = btn.closest('.columns-editor-row');
+  const sibling = direction < 0 ? row.previousElementSibling : row.nextElementSibling;
+  if (!sibling) return;
+  if (direction < 0) row.parentNode.insertBefore(row, sibling);
+  else row.parentNode.insertBefore(sibling, row);
+}
+
+async function saveColumns() {
+  const rows = [...document.querySelectorAll('#columns-editor-list .columns-editor-row')];
+  const errEl = document.getElementById('columns-error');
+  const usedIds = new Set();
+
+  const columns = [];
+  for (const row of rows) {
+    const title = row.querySelector('.columns-editor-title').value.trim();
+    if (!title) continue; // ignore empty rows
+    // Existing columns keep their id (tickets reference it); new ones get a slug
+    let id = row.dataset.colId || slugifyColumnId(title);
+    while (usedIds.has(id)) id = `${id}_2`.slice(0, 32);
+    usedIds.add(id);
+    columns.push({ id, title });
+  }
+
+  try {
+    const res = await fetch(`/api/projects/${currentProjectId}/columns`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ columns }),
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      errEl.textContent = body.error || `HTTP ${res.status}`;
+      errEl.style.display = 'block';
+      return;
+    }
+    closeColumnsModal();
+    // The projectChanged subscription re-renders the board; do it directly
+    // too in case the WebSocket is reconnecting.
+    currentProjectColumns = body.columns;
+    renderBoardColumns();
+    prevTicketState = new Map();
+    prevGroupState = new Map();
+    await loadBoard(currentProjectId);
+  } catch (e) {
+    errEl.textContent = String(e);
+    errEl.style.display = 'block';
+  }
+}
+
+window.openColumnsModal = openColumnsModal;
+window.closeColumnsModal = closeColumnsModal;
+window.addColumnRow = addColumnRow;
+window.moveColumnRow = moveColumnRow;
+window.saveColumns = saveColumns;
 
 // ---------------------------------------------------------------------------
 // Agents Modal (show API keys)
@@ -899,7 +1183,7 @@ function connectWebSocket(projectId) {
       console.log('[agentboard] Connected! Subscribing to events', projectId ? `for project ${projectId}` : '(overview)');
       // Always subscribe to global events
       subscribeGlobal(socket, '6', 'agentChanged', 'id name createdAt');
-      subscribeGlobal(socket, '7', 'projectChanged', 'id name description createdAt');
+      subscribeGlobal(socket, '7', 'projectChanged', 'id name description columns { id title } createdAt');
       subscribeGlobal(socket, '9', 'auditAdded', 'id agentId method path statusCode requestBody timestamp');
       // Project-specific subscriptions only when viewing a project
       if (projectId) {
@@ -947,7 +1231,7 @@ function subscribe(socket, id, eventName, projectId) {
   } else if (eventName === 'commentAdded') {
     query = `subscription { ${eventName}(projectId: "${projectId}") { id ticketId agent { id name } body createdAt } }`;
   } else {
-    query = `subscription { ${eventName}(projectId: "${projectId}") { id projectId title description column position group agentId assigneeId agent { id name } assignee { id name } createdAt updatedAt } }`;
+    query = `subscription { ${eventName}(projectId: "${projectId}") { id projectId title description column position group blockedReason dependsOn agentId assigneeId agent { id name } assignee { id name } createdAt updatedAt } }`;
   }
 
   socket.send(JSON.stringify({
@@ -974,9 +1258,26 @@ function handleSubscriptionEvent(subId, data) {
     return;
   }
 
-  // Project changed → reload overview if visible
+  // Project changed → reload overview if visible; if the open project's
+  // columns changed, re-render the board with the new column set
   if (subId === '7') {
-    if (!currentProjectId) loadProjectOverview();
+    const changed = data.projectChanged;
+    if (!currentProjectId) {
+      loadProjectOverview();
+    } else if (changed && changed.id === currentProjectId) {
+      const newCols = (changed.columns && changed.columns.length) ? changed.columns : FALLBACK_COLUMNS;
+      if (JSON.stringify(newCols) !== JSON.stringify(currentProjectColumns)) {
+        currentProjectColumns = newCols;
+        renderBoardColumns();
+        prevTicketState = new Map();
+        prevGroupState = new Map();
+        loadBoard(currentProjectId);
+      }
+      if (changed.name) {
+        currentProjectName = changed.name;
+        document.getElementById('current-project-name').textContent = `← ${changed.name}`;
+      }
+    }
     return;
   }
 
@@ -1080,6 +1381,18 @@ async function selectProject(projectId, projectName) {
     auditPanel.style.display = 'block';
     projectLabel.textContent = `\u2190 ${currentProjectName || 'Back'}`;
     projectLabel.style.display = '';
+    document.getElementById('edit-columns-btn').style.display = '';
+
+    // Load the project's column config before rendering the board
+    try {
+      const project = await fetchJSON(`/api/projects/${currentProjectId}`);
+      currentProjectColumns = (project.columns && project.columns.length) ? project.columns : FALLBACK_COLUMNS;
+    } catch {
+      currentProjectColumns = FALLBACK_COLUMNS;
+    }
+    renderBoardColumns();
+    prevTicketState = new Map();
+    prevGroupState = new Map();
 
     await loadBoard(currentProjectId);
     await loadActivity(currentProjectId);
@@ -1105,6 +1418,8 @@ async function showOverview() {
   activityFeed.classList.add('hidden');
   auditPanel.classList.add('hidden');
   projectLabel.style.display = 'none';
+  document.getElementById('edit-columns-btn').style.display = 'none';
+  clearDependencyArrows();
 
   if (ws) { ws.close(); ws = null; }
   clearAllViewingTimers();

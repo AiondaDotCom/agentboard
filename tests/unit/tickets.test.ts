@@ -43,8 +43,8 @@ describe('Ticket Routes', () => {
       const res = await request(app)
         .post(`/api/projects/${projectId}/tickets`)
         .set('X-Api-Key', apiKey)
-        .send({ title: 'Task', column: 'ready' });
-      expect(res.body.column).toBe('ready');
+        .send({ title: 'Task', column: 'rework' });
+      expect(res.body.column).toBe('rework');
     });
 
     it('should create a ticket with description', async () => {
