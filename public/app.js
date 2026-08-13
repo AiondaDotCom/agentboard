@@ -46,6 +46,24 @@ function columnColor(colId) {
   return KNOWN_COLUMN_COLORS[colId] || `hsl(${groupHue(colId)}, 70%, 65%)`;
 }
 
+// Ticket priorities: weight for sorting (higher = more urgent, shown on top)
+const PRIORITY_META = {
+  critical: { weight: 4, label: 'Critical', icon: '\u{1F525}' },
+  high: { weight: 3, label: 'High', icon: '\u{2B06}\u{FE0F}' },
+  medium: { weight: 2, label: 'Medium', icon: '\u{25CF}' },
+  low: { weight: 1, label: 'Low', icon: '\u{2B07}\u{FE0F}' },
+};
+
+function priorityMeta(priority) {
+  return PRIORITY_META[priority] || PRIORITY_META.medium;
+}
+
+function priorityBadge(ticket, cssClass) {
+  const p = ticket.priority || 'medium';
+  const meta = priorityMeta(p);
+  return `<span class="${cssClass} prio-${p}" title="Priority: ${meta.label}">${meta.icon} ${meta.label}</span>`;
+}
+
 // ---------------------------------------------------------------------------
 // Agent viewing tracker – ticketId -> Map<agentId, {name, timer}>
 // ---------------------------------------------------------------------------
@@ -368,7 +386,8 @@ function renderBoard(tickets) {
   columns.forEach(col => {
     const colEl = document.querySelector(`[data-column="${col}"] .ticket-list`);
     const countEl = document.querySelector(`[data-column="${col}"] .column-count`);
-    const colTickets = tickets.filter(t => t.column === col).sort((a, b) => b.position - a.position);
+    const colTickets = tickets.filter(t => t.column === col).sort((a, b) =>
+      (priorityMeta(b.priority).weight - priorityMeta(a.priority).weight) || (b.position - a.position));
     countEl.textContent = colTickets.length;
     colEl.innerHTML = '';
     const groupWrappers = new Map();
@@ -509,6 +528,7 @@ function createTicketCard(ticket) {
     ${ticket.blockedReason ? `<div class="ticket-blocked" title="Blocked reason">&#x26d4; ${escapeHtml(ticket.blockedReason)}</div>` : ''}
     ${ticket.description ? `<div class="ticket-desc">${escapeHtml(ticket.description)}</div>` : ''}
     <div class="ticket-meta">
+      ${priorityBadge(ticket, 'ticket-priority')}
       ${author ? `<span class="ticket-agent" title="Author">&#x270d;&#xfe0f; ${escapeHtml(author.name)}</span>` : '<span></span>'}
       ${assignee ? `<span class="ticket-assignee" title="Assigned to">&#x1f527; ${escapeHtml(assignee.name)}</span>` : ''}
       ${depBadge}
@@ -734,6 +754,15 @@ async function openModal(projectId, ticketId) {
   badge.textContent = columnTitle(ticket.column);
   badge.className = 'modal-column-badge ' + ticket.column;
   badge.style.setProperty('--col-color', columnColor(ticket.column));
+
+  // Priority badge next to the column badge
+  const prioEl = document.getElementById('modal-priority');
+  if (prioEl) {
+    const meta = priorityMeta(ticket.priority);
+    prioEl.textContent = `${meta.icon} ${meta.label}`;
+    prioEl.className = `modal-priority prio-${ticket.priority || 'medium'}`;
+    prioEl.title = `Priority: ${meta.label}`;
+  }
 
   // Title + author
   document.getElementById('modal-title').textContent = ticket.title;
@@ -1231,7 +1260,7 @@ function subscribe(socket, id, eventName, projectId) {
   } else if (eventName === 'commentAdded') {
     query = `subscription { ${eventName}(projectId: "${projectId}") { id ticketId agent { id name } body createdAt } }`;
   } else {
-    query = `subscription { ${eventName}(projectId: "${projectId}") { id projectId title description column position group blockedReason dependsOn agentId assigneeId agent { id name } assignee { id name } createdAt updatedAt } }`;
+    query = `subscription { ${eventName}(projectId: "${projectId}") { id projectId title description column position group blockedReason priority dependsOn agentId assigneeId agent { id name } assignee { id name } createdAt updatedAt } }`;
   }
 
   socket.send(JSON.stringify({

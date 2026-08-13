@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   position INTEGER NOT NULL DEFAULT 0,
   group_name TEXT,
   blocked_reason TEXT,
+  priority TEXT NOT NULL DEFAULT 'medium',
   agent_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
   assignee_id TEXT REFERENCES agents(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),

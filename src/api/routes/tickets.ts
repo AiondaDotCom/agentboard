@@ -17,13 +17,14 @@ export function createTicketRoutes(service: BoardService): Router {
   router.post('/tickets', auth, (req: Request, res: Response): void => {
     try {
       const projectId = routeParam(req, 'id');
-      const { title, description, column, group, blocked_reason, depends_on } = req.body as {
+      const { title, description, column, group, blocked_reason, depends_on, priority } = req.body as {
         title?: unknown;
         description?: unknown;
         column?: unknown;
         group?: unknown;
         blocked_reason?: unknown;
         depends_on?: unknown;
+        priority?: unknown;
       };
       const agentId = agentIdOf(req as AuthenticatedRequest);
 
@@ -36,6 +37,7 @@ export function createTicketRoutes(service: BoardService): Router {
         typeof group === 'string' ? group : undefined,
         blocked_reason as string | null | undefined,
         depends_on,
+        priority,
       );
       res.status(201).json(ticket);
     } catch (err) {
@@ -77,13 +79,14 @@ export function createTicketRoutes(service: BoardService): Router {
     try {
       const projectId = routeParam(req, 'id');
       const ticketId = routeParam(req, 'ticketId');
-      const { title, description, column, group, blocked_reason, depends_on } = req.body as {
+      const { title, description, column, group, blocked_reason, depends_on, priority } = req.body as {
         title?: unknown;
         description?: unknown;
         column?: unknown;
         group?: unknown;
         blocked_reason?: unknown;
         depends_on?: unknown;
+        priority?: unknown;
       };
       const agentId = agentIdOf(req as AuthenticatedRequest);
 
@@ -94,6 +97,7 @@ export function createTicketRoutes(service: BoardService): Router {
         group?: string | null;
         blockedReason?: string | null;
         dependsOn?: unknown;
+        priority?: unknown;
       } = {};
       if (title !== undefined) updates.title = title as string;
       if (description !== undefined) updates.description = description as string;
@@ -101,6 +105,7 @@ export function createTicketRoutes(service: BoardService): Router {
       if (group !== undefined) updates.group = group as string | null;
       if (blocked_reason !== undefined) updates.blockedReason = blocked_reason as string | null;
       if (depends_on !== undefined) updates.dependsOn = depends_on;
+      if (priority !== undefined) updates.priority = priority;
 
       const ticket = service.updateTicket(projectId, ticketId, updates, agentId);
       res.json(ticket);

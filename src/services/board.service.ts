@@ -9,7 +9,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { AgentboardDB } from '../db/database.js';
 import { pubsub, EVENTS } from '../graphql/pubsub.js';
-import { COLUMN_ID_RE, DEFAULT_COLUMNS } from '../types.js';
+import { COLUMN_ID_RE, DEFAULT_COLUMNS, DEFAULT_PRIORITY, PRIORITIES } from '../types.js';
 import type {
   Agent,
   AgentPublic,
@@ -23,6 +23,7 @@ import type {
   ColumnDef,
   TicketListOptions,
   PaginatedResult,
+  Priority,
 } from '../types.js';
 import { NotFoundError, ValidationError, DuplicateError, ConflictError } from './errors.js';
 
@@ -225,6 +226,7 @@ export class BoardService {
     group?: string | null,
     blockedReason?: string | null,
     dependsOn?: unknown,
+    priority?: unknown,
   ): Ticket {
     const project = this.requireProject(projectId);
 
@@ -253,6 +255,10 @@ export class BoardService {
       this.assertDependenciesAllowColumn(project, deps, col, title.trim());
     }
 
+    const prio = priority === undefined || priority === null
+      ? DEFAULT_PRIORITY
+      : this.validatePriority(priority);
+
     const ticket = this.db.createTicket(
       projectId,
       title.trim(),
@@ -262,6 +268,7 @@ export class BoardService {
       groupName,
       reason,
       deps,
+      prio,
     );
 
     this.db.logActivity(
@@ -316,6 +323,7 @@ export class BoardService {
       group?: string | null;
       blockedReason?: string | null;
       dependsOn?: unknown;
+      priority?: unknown;
     },
     actorId?: string | null,
   ): Ticket {
@@ -345,6 +353,7 @@ export class BoardService {
       group?: string | null;
       blockedReason?: string | null;
       dependsOn?: string[];
+      priority?: Priority;
     } = {};
     if (typeof updates.title === 'string') cleanUpdates.title = updates.title.trim();
     if (typeof updates.description === 'string') cleanUpdates.description = updates.description;
@@ -357,6 +366,9 @@ export class BoardService {
       const deps = this.resolveDependencies(projectId, resolved.id, updates.dependsOn);
       this.assertNoDependencyCycle(projectId, resolved.id, deps);
       cleanUpdates.dependsOn = deps;
+    }
+    if (updates.priority !== undefined) {
+      cleanUpdates.priority = this.validatePriority(updates.priority);
     }
 
     // Dependency gate: moving to any column but the first requires all
@@ -695,6 +707,16 @@ export class BoardService {
   // -------------------------------------------------------------------------
   // Column configuration & dependency helpers
   // -------------------------------------------------------------------------
+
+  /** Throws unless the value is one of the known priority levels. */
+  private validatePriority(value: unknown): Priority {
+    if (typeof value !== 'string' || !(PRIORITIES as readonly string[]).includes(value)) {
+      throw new ValidationError(
+        `Invalid "priority" value "${String(value)}". Valid priorities: ${PRIORITIES.join(', ')}`,
+      );
+    }
+    return value as Priority;
+  }
 
   /** Throws unless columnId exists in the project's configured columns. */
   private requireValidColumn(project: Project, columnId: string): void {

@@ -1661,6 +1661,52 @@ tr.overview-flash {
   font-size: 12px;
 }
 
+/* Priority badge on cards + modal */
+.ticket-priority {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.modal-priority {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 12px;
+  white-space: nowrap;
+  margin-left: 6px;
+}
+
+.ticket-priority.prio-critical,
+.modal-priority.prio-critical {
+  background: rgba(239, 68, 68, 0.16);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  color: #fca5a5;
+}
+
+.ticket-priority.prio-high,
+.modal-priority.prio-high {
+  background: rgba(249, 115, 22, 0.14);
+  border: 1px solid rgba(249, 115, 22, 0.4);
+  color: #fdba74;
+}
+
+.ticket-priority.prio-medium,
+.modal-priority.prio-medium {
+  background: rgba(234, 179, 8, 0.12);
+  border: 1px solid rgba(234, 179, 8, 0.32);
+  color: #fde047;
+}
+
+.ticket-priority.prio-low,
+.modal-priority.prio-low {
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  color: var(--text-dim);
+}
+
 /* Dependency badge on cards */
 .ticket-deps {
   cursor: pointer;

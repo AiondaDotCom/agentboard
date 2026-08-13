@@ -22,8 +22,9 @@ import type {
   ColumnDef,
   TicketListOptions,
   PaginatedResult,
+  Priority,
 } from '../types.js';
-import { DEFAULT_COLUMNS, LEGACY_COLUMNS } from '../types.js';
+import { DEFAULT_COLUMNS, LEGACY_COLUMNS, DEFAULT_PRIORITY } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Row interfaces – mirror the exact snake_case column names returned by SQLite
@@ -53,6 +54,7 @@ interface TicketRow {
   position: number;
   group_name: string | null;
   blocked_reason: string | null;
+  priority: string;
   agent_id: string | null;
   assignee_id: string | null;
   comment_count: number;
@@ -144,6 +146,9 @@ export class AgentboardDB {
       if (!columns.some((c) => c.name === 'blocked_reason')) {
         this.db.exec('ALTER TABLE tickets ADD COLUMN blocked_reason TEXT');
       }
+      if (!columns.some((c) => c.name === 'priority')) {
+        this.db.exec("ALTER TABLE tickets ADD COLUMN priority TEXT NOT NULL DEFAULT 'medium'");
+      }
     }
 
     const hasProjects = this.db
@@ -217,6 +222,7 @@ export class AgentboardDB {
       position: row.position,
       group: row.group_name ?? null,
       blockedReason: row.blocked_reason ?? null,
+      priority: row.priority as Priority,
       dependsOn: row.depends_on ? row.depends_on.split(',') : [],
       agentId: row.agent_id,
       assigneeId: row.assignee_id ?? null,
@@ -438,12 +444,14 @@ export class AgentboardDB {
     group?: string | null,
     blockedReason?: string | null,
     dependsOn?: string[],
+    priority?: Priority,
   ): Ticket {
     const id = uuidv4();
     const desc = description ?? '';
     const col = column ?? 'backlog';
     const agent = agentId ?? null;
     const groupName = group ?? null;
+    const prio = priority ?? DEFAULT_PRIORITY;
 
     // Determine next position in the target column
     const maxPos = this.db
@@ -455,9 +463,9 @@ export class AgentboardDB {
     const position = maxPos.max_pos + 1;
 
     const stmt = this.db.prepare(
-      'INSERT INTO tickets (id, project_id, title, description, column_name, position, agent_id, group_name, blocked_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO tickets (id, project_id, title, description, column_name, position, agent_id, group_name, blocked_reason, priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     );
-    stmt.run(id, projectId, title, desc, col, position, agent, groupName, blockedReason ?? null);
+    stmt.run(id, projectId, title, desc, col, position, agent, groupName, blockedReason ?? null, prio);
 
     if (dependsOn && dependsOn.length > 0) {
       this.setTicketDependencies(id, dependsOn);
@@ -548,6 +556,7 @@ export class AgentboardDB {
       agentId?: string | null;
       blockedReason?: string | null;
       dependsOn?: string[];
+      priority?: Priority;
     },
     actorId?: string | null,
   ): Ticket | undefined {
@@ -565,6 +574,7 @@ export class AgentboardDB {
     const newBlockedReason =
       'blockedReason' in updates ? (updates.blockedReason ?? null) : existing.blockedReason;
     const newDependsOn = updates.dependsOn ?? existing.dependsOn;
+    const newPriority = updates.priority ?? existing.priority;
 
     // Log revisions for each changed field BEFORE applying the update
     const actor = actorId !== undefined ? actorId : null;
@@ -589,6 +599,9 @@ export class AgentboardDB {
     if (updates.dependsOn && newDependsOn.join(',') !== existing.dependsOn.join(',')) {
       this.logRevision(existing.id, actor, 'depends_on', existing.dependsOn.join(', '), newDependsOn.join(', '));
     }
+    if (newPriority !== existing.priority) {
+      this.logRevision(existing.id, actor, 'priority', existing.priority, newPriority);
+    }
 
     // If column changed, compute new position at the end of target column
     let newPosition = existing.position;
@@ -604,7 +617,7 @@ export class AgentboardDB {
     this.db
       .prepare(
         `UPDATE tickets
-         SET title = ?, description = ?, column_name = ?, position = ?, group_name = ?, agent_id = ?, blocked_reason = ?, updated_at = datetime('now')
+         SET title = ?, description = ?, column_name = ?, position = ?, group_name = ?, agent_id = ?, blocked_reason = ?, priority = ?, updated_at = datetime('now')
          WHERE id = ? AND project_id = ?`,
       )
       .run(
@@ -615,6 +628,7 @@ export class AgentboardDB {
         newGroup,
         newAgentId,
         newBlockedReason,
+        newPriority,
         existing.id,
         projectId,
       );

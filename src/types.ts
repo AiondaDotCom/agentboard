@@ -43,6 +43,14 @@ export const LEGACY_COLUMNS: ColumnDef[] = [
 /** Allowed shape for column ids: lowercase slug, max 32 chars. */
 export const COLUMN_ID_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 
+/** Ticket priority levels, ordered from least to most urgent. */
+export const PRIORITIES = ['low', 'medium', 'high', 'critical'] as const;
+
+export type Priority = (typeof PRIORITIES)[number];
+
+/** Priority assigned to tickets that don't specify one. */
+export const DEFAULT_PRIORITY: Priority = 'medium';
+
 // ---------------------------------------------------------------------------
 // Query options
 // ---------------------------------------------------------------------------
@@ -100,6 +108,8 @@ export interface Ticket {
   group: string | null;
   /** Why the ticket cannot proceed (external dependency). Null when not blocked. */
   blockedReason: string | null;
+  /** Urgency of the ticket (low | medium | high | critical). */
+  priority: Priority;
   /**
    * Ticket ids this ticket depends on. While any of them is not in the last
    * (finished) column, this ticket may only live in the first column.
