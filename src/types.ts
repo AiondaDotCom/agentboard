@@ -52,6 +52,57 @@ export type Priority = (typeof PRIORITIES)[number];
 export const DEFAULT_PRIORITY: Priority = 'medium';
 
 // ---------------------------------------------------------------------------
+// Batch operations
+// ---------------------------------------------------------------------------
+
+/**
+ * Operations executable through the batch endpoint / MCP `batch` tool.
+ * Names and argument shapes match the individual MCP tools (snake_case args).
+ */
+export const BATCH_OPS = [
+  'list_projects',
+  'get_project',
+  'create_project',
+  'update_project',
+  'delete_project',
+  'list_tickets',
+  'get_ticket',
+  'create_ticket',
+  'update_ticket',
+  'move_ticket',
+  'assign_ticket',
+  'delete_ticket',
+  'add_comment',
+  'get_comments',
+  'get_ticket_history',
+  'list_agents',
+] as const;
+
+export type BatchOp = (typeof BATCH_OPS)[number];
+
+/** Maximum number of operations in a single batch call. */
+export const MAX_BATCH_OPS = 100;
+
+/** One entry of a batch request. */
+export interface BatchOperation {
+  op: BatchOp;
+  args: Record<string, unknown>;
+}
+
+/**
+ * Per-operation outcome of a batch call. Operations run sequentially in
+ * array order; a failed operation does not stop the rest (no rollback).
+ */
+export interface BatchOperationResult {
+  op: BatchOp;
+  ok: boolean;
+  /** Return value of the operation (present when ok). */
+  result?: unknown;
+  /** Error message (present when not ok). */
+  error?: string;
+}
+
+// ---------------------------------------------------------------------------
 // Query options
 // ---------------------------------------------------------------------------
 

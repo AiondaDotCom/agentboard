@@ -40,6 +40,7 @@ HTTP Server (src/server.ts, port 3000)
 - **priority**: Ticket-Prioritaet `low | medium | high | critical` (Default `medium`, Konstanten in `types.ts`). Validierung im BoardService, revisionssicher geloggt. Frontend: farbiges Badge auf Karte + Modal; Tickets werden innerhalb einer Spalte nach Prioritaet sortiert (hoechste oben), Position als Tiebreaker.
 - **depends_on**: Array von Ticket-IDs am Ticket. Regel: Solange eine Dependency nicht in der LETZTEN Spalte ist, darf das Ticket nur in der ERSTEN Spalte liegen – jede andere Bewegung wirft `ConflictError` (409) mit Begruendung, welche Tickets in welcher Spalte noch offen sind. Zyklen werden beim Setzen abgelehnt. Frontend: Dep-Badge auf der Karte (rot = offen, gruen = alle fertig), Klick zeichnet SVG-Pfeile zu den Dependency-Karten; Modal listet Dependencies mit Status. Tabelle `ticket_dependencies` (CASCADE bei Ticket-Loeschung).
 - **Zuletzt angefasst**: `updated_at` wird auf jeder Karte (🕒) und im Modal angezeigt.
+- **Batch-Operationen**: MCP-Tool `batch` und `POST /api/batch` fuehren bis zu 100 Operationen sequenziell in EINEM Aufruf aus. Jeder Eintrag ist `{op, args}` mit exakt denselben Namen/Argumenten wie die Einzel-Tools (16 Ops, alle ausser whoami; Konstante `BATCH_OPS` in types.ts). Per-Item-Ergebnis `{op, ok, result|error}` – Fehler stoppen die anderen Ops NICHT (kein Rollback), eine BATCH-Zeile im Audit-Log fasst zusammen. Dispatcher: `BoardService.executeBatch()`. Der MCP-Server wirbt aktiv fuer batch (Server-`instructions` beim Connect via `MCP_INSTRUCTIONS`, batch-Tool-Description, Hinweise in create/update/move_ticket), damit KI-Clients bei >1 Operation immer batch statt Einzelaufrufen nutzen (1 Roundtrip statt N).
 - **Testabdeckung**: 100% (statements/branches/functions/lines) fuer alle `src/`-Module ausser `server.ts` (Bootstrap, via Playwright-E2E abgedeckt). Thresholds in vitest.config.ts stehen auf 100 – neue Features brauchen vollstaendige Tests.
 
 ## Scripts
@@ -57,4 +58,4 @@ claude mcp add -t http -s user agentboard http://localhost:3000/mcp
 ```
 Server muss laufen (`./run.sh`) damit MCP erreichbar ist.
 
-17 Tools: list_projects, create_project, get_project, update_project, delete_project, list_tickets, get_ticket, create_ticket, update_ticket, move_ticket, assign_ticket, delete_ticket, add_comment, get_comments, get_ticket_history, list_agents, whoami
+18 Tools: batch, list_projects, create_project, get_project, update_project, delete_project, list_tickets, get_ticket, create_ticket, update_ticket, move_ticket, assign_ticket, delete_ticket, add_comment, get_comments, get_ticket_history, list_agents, whoami

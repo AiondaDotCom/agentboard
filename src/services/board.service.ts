@@ -9,10 +9,13 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { AgentboardDB } from '../db/database.js';
 import { pubsub, EVENTS } from '../graphql/pubsub.js';
-import { COLUMN_ID_RE, DEFAULT_COLUMNS, DEFAULT_PRIORITY, PRIORITIES } from '../types.js';
+import { BATCH_OPS, COLUMN_ID_RE, DEFAULT_COLUMNS, DEFAULT_PRIORITY, MAX_BATCH_OPS, PRIORITIES } from '../types.js';
 import type {
   Agent,
   AgentPublic,
+  BatchOp,
+  BatchOperation,
+  BatchOperationResult,
   Project,
   Ticket,
   Comment,
@@ -634,6 +637,140 @@ export class BoardService {
 
   getAuditEntriesByAgent(agentId: string, limit?: number): AuditEntry[] {
     return this.db.getAuditEntriesByAgent(agentId, limit);
+  }
+
+  // -------------------------------------------------------------------------
+  // Batch execution
+  //
+  // Executes many board operations in one call (one round-trip for agents).
+  // Operations run sequentially in array order; each result is reported
+  // individually – a failed operation does NOT roll back the others, so the
+  // caller can see exactly which operations succeeded.
+  // -------------------------------------------------------------------------
+
+  executeBatch(operations: unknown, actorId?: string | null): BatchOperationResult[] {
+    const ops = this.validateBatchInput(operations);
+
+    const results: BatchOperationResult[] = ops.map(({ op, args }) => {
+      try {
+        return { op, ok: true, result: this.dispatchBatchOp(op, args, actorId ?? null) };
+      } catch (e) {
+        return { op, ok: false, error: e instanceof Error ? e.message : 'Failed' };
+      }
+    });
+
+    const failed = results.filter((r) => !r.ok).length;
+    this.audit(
+      actorId ?? null,
+      'BATCH',
+      `${ops.length} operation${ops.length !== 1 ? 's' : ''}`,
+      `${ops.length - failed} ok, ${failed} failed: ${ops.map((o) => o.op).join(', ')}`,
+    );
+    return results;
+  }
+
+  /** Validates the batch envelope. Throws ValidationError before anything runs. */
+  private validateBatchInput(operations: unknown): BatchOperation[] {
+    if (!Array.isArray(operations) || operations.length === 0 || operations.length > MAX_BATCH_OPS) {
+      throw new ValidationError(
+        `"operations" must be an array of 1-${MAX_BATCH_OPS} entries like {"op": "update_ticket", "args": {...}}`,
+      );
+    }
+    return operations.map((entry, i) => {
+      if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+        throw new ValidationError(`Operation #${i} must be an object with "op" and "args"`);
+      }
+      const { op, args } = entry as { op?: unknown; args?: unknown };
+      if (typeof op !== 'string' || !(BATCH_OPS as readonly string[]).includes(op)) {
+        throw new ValidationError(
+          `Operation #${i} has unknown "op" "${String(op)}". Supported operations: ${BATCH_OPS.join(', ')}`,
+        );
+      }
+      if (args !== undefined && (typeof args !== 'object' || args === null || Array.isArray(args))) {
+        throw new ValidationError(`Operation #${i} ("${op}"): "args" must be an object`);
+      }
+      return { op: op as BatchOp, args: (args ?? {}) as Record<string, unknown> };
+    });
+  }
+
+  /** Routes one batch operation to the matching service method (snake_case args, like MCP/REST). */
+  private dispatchBatchOp(op: BatchOp, args: Record<string, unknown>, actorId: string | null): unknown {
+    const str = (key: string): string => String(args[key] ?? '');
+    const optStr = (key: string): string | undefined =>
+      typeof args[key] === 'string' ? (args[key] as string) : undefined;
+
+    switch (op) {
+      case 'list_projects':
+        return this.getAllProjects(actorId);
+      case 'get_project':
+        return this.getProject(str('project_id'), actorId);
+      case 'create_project':
+        return this.createProject(args['name'] as string, optStr('description'), actorId, args['columns']);
+      case 'update_project': {
+        const updates: { name?: string; description?: string; columns?: unknown } = {};
+        if (args['name'] !== undefined) updates.name = args['name'] as string;
+        if (args['description'] !== undefined) updates.description = args['description'] as string;
+        if (args['columns'] !== undefined) updates.columns = args['columns'];
+        return this.updateProject(str('project_id'), updates, actorId);
+      }
+      case 'delete_project':
+        this.deleteProject(str('project_id'), actorId);
+        return { deleted: true };
+      case 'list_tickets':
+        return this.getTicketsByProject(str('project_id'), actorId, {
+          column: optStr('column'),
+          page: args['page'] as number | undefined,
+          per_page: args['per_page'] as number | undefined,
+        });
+      case 'get_ticket':
+        return this.getTicket(str('project_id'), str('ticket_id'), actorId);
+      case 'create_ticket':
+        return this.createTicket(
+          str('project_id'),
+          args['title'] as string,
+          optStr('description'),
+          optStr('column'),
+          actorId,
+          args['group'] as string | null | undefined,
+          args['blocked_reason'] as string | null | undefined,
+          args['depends_on'],
+          args['priority'],
+        );
+      case 'update_ticket': {
+        const updates: {
+          title?: string; description?: string; column?: string; group?: string | null;
+          blockedReason?: string | null; dependsOn?: unknown; priority?: unknown;
+        } = {};
+        if (args['title'] !== undefined) updates.title = args['title'] as string;
+        if (args['description'] !== undefined) updates.description = args['description'] as string;
+        if (args['column'] !== undefined) updates.column = args['column'] as string;
+        if (args['group'] !== undefined) updates.group = args['group'] as string | null;
+        if (args['blocked_reason'] !== undefined) updates.blockedReason = args['blocked_reason'] as string | null;
+        if (args['depends_on'] !== undefined) updates.dependsOn = args['depends_on'];
+        if (args['priority'] !== undefined) updates.priority = args['priority'];
+        return this.updateTicket(str('project_id'), str('ticket_id'), updates, actorId);
+      }
+      case 'move_ticket':
+        return this.moveTicket(str('project_id'), str('ticket_id'), args['column'] as string, actorId);
+      case 'assign_ticket': {
+        const assigneeId = args['assignee_id'];
+        if (typeof assigneeId === 'string' && assigneeId.length > 0) {
+          return this.assignTicket(str('project_id'), str('ticket_id'), assigneeId, actorId);
+        }
+        return this.unassignTicket(str('project_id'), str('ticket_id'), actorId);
+      }
+      case 'delete_ticket':
+        this.deleteTicket(str('project_id'), str('ticket_id'), actorId);
+        return { deleted: true };
+      case 'add_comment':
+        return this.createComment(str('project_id'), str('ticket_id'), actorId as string, args['body'] as string);
+      case 'get_comments':
+        return this.getCommentsByTicket(str('project_id'), str('ticket_id'), actorId);
+      case 'get_ticket_history':
+        return this.getRevisionsByTicket(str('project_id'), str('ticket_id'), actorId);
+      case 'list_agents':
+        return this.getAllAgents(actorId);
+    }
   }
 
   // -------------------------------------------------------------------------

@@ -45,9 +45,9 @@ describe('MCP tools', () => {
     db.close();
   });
 
-  it('registers all 17 tools', () => {
+  it('registers all 18 tools', () => {
     expect([...tools.keys()].sort()).toEqual([
-      'add_comment', 'assign_ticket', 'create_project', 'create_ticket',
+      'add_comment', 'assign_ticket', 'batch', 'create_project', 'create_ticket',
       'delete_project', 'delete_ticket', 'get_comments', 'get_project',
       'get_ticket', 'get_ticket_history', 'list_agents', 'list_projects',
       'list_tickets', 'move_ticket', 'update_project', 'update_ticket', 'whoami',

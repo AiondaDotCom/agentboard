@@ -16,13 +16,14 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 
 import { AgentboardDB } from './db/database.js';
 import { BoardService } from './services/board.service.js';
-import { registerMcpTools } from './mcp-server.js';
+import { registerMcpTools, MCP_INSTRUCTIONS } from './mcp-server.js';
 import { typeDefs } from './graphql/schema.js';
 import { createResolvers } from './graphql/resolvers.js';
 import { createAgentRoutes } from './api/routes/agents.js';
 import { createProjectRoutes } from './api/routes/projects.js';
 import { createTicketRoutes, createHumanTicketRoutes } from './api/routes/tickets.js';
 import { createAuditRoutes } from './api/routes/audit.js';
+import { createBatchRoutes } from './api/routes/batch.js';
 import { createAuditMiddleware } from './api/middleware/audit.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '3000', 10);
@@ -104,6 +105,7 @@ app.use('/api/projects', createProjectRoutes(service));
 app.use('/api/projects/:id', createTicketRoutes(service));
 app.use('/api/projects/:id', createHumanTicketRoutes(service));
 app.use('/api/audit', createAuditRoutes(service));
+app.use('/api/batch', createBatchRoutes(service));
 
 // Agent keys route (session-protected – only for authenticated admin UI)
 app.get('/api/agents/keys', (req, res): void => {
@@ -200,7 +202,7 @@ async function createMcpTransport(
     }
   };
 
-  const mcp = new McpServer({ name: 'agentboard', version: '1.0.0' });
+  const mcp = new McpServer({ name: 'agentboard', version: '1.0.0' }, { instructions: MCP_INSTRUCTIONS });
   registerMcpTools(mcp, service, agentId, agentName);
   await mcp.connect(transport as unknown as Parameters<typeof mcp.connect>[0]);
   return transport;

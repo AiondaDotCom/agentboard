@@ -8,6 +8,22 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { BoardService } from './services/board.service.js';
+import { BATCH_OPS, MAX_BATCH_OPS } from './types.js';
+import type { Ticket } from './types.js';
+
+// ---------------------------------------------------------------------------
+// Server instructions – shown to the AI client on connect.
+// Actively advertises the batch tool: one round-trip instead of N is both
+// faster and cheaper (tokens) for the calling model.
+// ---------------------------------------------------------------------------
+
+export const MCP_INSTRUCTIONS =
+  'Agentboard – realtime Kanban board for AI agents. ' +
+  'PERFORMANCE RULE: Whenever you are about to make MORE THAN ONE tool call ' +
+  '(e.g. creating several tickets, updating/moving multiple tickets, or any mix of operations), ' +
+  'ALWAYS use the `batch` tool instead of individual calls. One batch call executes many ' +
+  'operations in a single round-trip – dramatically faster and cheaper than sequential tool calls. ' +
+  'Use individual tools only for single, stand-alone operations.';
 
 // ---------------------------------------------------------------------------
 // Tool registration (shared between embedded + standalone)
@@ -30,6 +46,22 @@ export function registerMcpTools(
     try { return ok(fn()); }
     catch (e) { return err(e instanceof Error ? e.message : 'Failed'); }
   }
+
+  // --- Batch (registered first so clients see it prominently) ---
+  mcp.tool('batch', `PREFERRED whenever you have more than one operation to perform: executes up to ${MAX_BATCH_OPS} board operations in ONE call (one round-trip instead of N – much faster and saves tokens). Each entry is {"op": <tool name>, "args": {...}} with exactly the same semantics and argument names as the tool of the same name (supported: ${BATCH_OPS.join(', ')}). Operations run sequentially in array order and are reported individually as {op, ok, result|error} – a failed operation does NOT stop or roll back the others, so always check each result. Note: ids of tickets created earlier in the same batch are not referenceable by later operations.`, {
+    operations: z.array(z.object({
+      op: z.enum(BATCH_OPS).describe('Operation to execute – same name, semantics and args as the corresponding individual tool'),
+      args: z.record(z.string(), z.unknown()).optional().describe('Arguments for the operation, exactly as for the tool of the same name (e.g. project_id, ticket_id, title, column, ...)'),
+    })).min(1).max(MAX_BATCH_OPS).describe('Operations to execute sequentially in array order'),
+  }, async ({ operations }) => wrap(() => {
+    const results = service.executeBatch(operations, agentId);
+    // Same token-saving trim as the standalone list_tickets tool
+    return results.map((r) => {
+      if (r.op !== 'list_tickets' || !r.ok) return r;
+      const page = r.result as { data: Ticket[] };
+      return { ...r, result: { ...page, data: page.data.map(({ description, ...rest }) => rest) } };
+    });
+  }));
 
   // --- Projects ---
   mcp.tool('list_projects', 'List all projects on the board', {},
@@ -92,7 +124,7 @@ export function registerMcpTools(
     async ({ project_id, ticket_id }) =>
       wrap(() => service.getTicket(project_id, ticket_id, agentId)));
 
-  mcp.tool('create_ticket', 'Create a new ticket in a project. Descriptions support Markdown formatting (bold, lists, headings, code blocks, etc.) – please use Markdown for better readability. Use "group" to bundle related tickets that must be handled by a single agent (assigning one ticket of a group claims the whole group). Use "depends_on" for tickets that must be finished first – a ticket with unfinished dependencies can only stay in the first column.', {
+  mcp.tool('create_ticket', 'Create a new ticket in a project. To create SEVERAL tickets, use the `batch` tool instead (much faster). Descriptions support Markdown formatting (bold, lists, headings, code blocks, etc.) – please use Markdown for better readability. Use "group" to bundle related tickets that must be handled by a single agent (assigning one ticket of a group claims the whole group). Use "depends_on" for tickets that must be finished first – a ticket with unfinished dependencies can only stay in the first column.', {
     project_id: z.string().describe('Project ID'),
     title: z.string().describe('Ticket title'),
     description: z.string().optional().describe('Ticket description (supports Markdown: **bold**, *italic*, - lists, ## headings, `code`, etc.)'),
@@ -104,7 +136,7 @@ export function registerMcpTools(
   }, async ({ project_id, title, description, column, group, blocked_reason, depends_on, priority }) =>
     wrap(() => service.createTicket(project_id, title, description, column, agentId, group, blocked_reason, depends_on, priority)));
 
-  mcp.tool('update_ticket', 'Update a ticket (title, description, column, group, blocked_reason, depends_on, or priority). Descriptions support Markdown formatting. Moving to a column other than the first is refused while the ticket has unfinished dependencies – the error explains which tickets must be finished first.', {
+  mcp.tool('update_ticket', 'Update a ticket (title, description, column, group, blocked_reason, depends_on, or priority). To update SEVERAL tickets, use the `batch` tool instead (much faster). Descriptions support Markdown formatting. Moving to a column other than the first is refused while the ticket has unfinished dependencies – the error explains which tickets must be finished first.', {
     project_id: z.string().describe('Project ID'),
     ticket_id: z.string().describe('Ticket ID'),
     title: z.string().optional().describe('New title'),
@@ -129,7 +161,7 @@ export function registerMcpTools(
     return wrap(() => service.updateTicket(project_id, ticket_id, updates, agentId));
   });
 
-  mcp.tool('move_ticket', 'Move a ticket to a different column. Refused (with an explanation of which tickets must be finished first) while the ticket has unfinished dependencies and the target is not the first column.', {
+  mcp.tool('move_ticket', 'Move a ticket to a different column. To move SEVERAL tickets, use the `batch` tool instead (much faster). Refused (with an explanation of which tickets must be finished first) while the ticket has unfinished dependencies and the target is not the first column.', {
     project_id: z.string().describe('Project ID'),
     ticket_id: z.string().describe('Ticket ID'),
     column: z.string().describe('Target column id – must be one of the project\'s configured columns (see get_project)'),
@@ -208,7 +240,7 @@ if (isMain) {
   const svc = new BoardService(db);
   const aid = getOrCreateMcpAgent(svc, AGENT_NAME);
 
-  const mcp = new McpServer({ name: 'agentboard', version: '1.0.0' });
+  const mcp = new McpServer({ name: 'agentboard', version: '1.0.0' }, { instructions: MCP_INSTRUCTIONS });
   registerMcpTools(mcp, svc, aid, AGENT_NAME);
 
   const transport = new StdioServerTransport();
