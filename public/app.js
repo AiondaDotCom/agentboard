@@ -757,6 +757,20 @@ window.openTicket = openTicket;
 
 let currentModalTicket = null;
 
+// Details sidebar helpers: a row without a value is hidden entirely (Jira-style),
+// unless a placeholder like "Unassigned" is given.
+function toggleSideRow(el, visible) {
+  const row = el && el.closest ? el.closest('.modal-side-row') : null;
+  if (row) row.classList.toggle('hidden', !visible);
+}
+
+function setSideValue(id, value, placeholder) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = value || placeholder || '';
+  toggleSideRow(el, !!(value || placeholder));
+}
+
 async function openModal(projectId, ticketId) {
   const modal = document.getElementById('ticket-modal');
   const [ticket, comments, revisions] = await Promise.all([
@@ -799,33 +813,25 @@ async function openModal(projectId, ticketId) {
       workEl.className = 'modal-work-type hidden';
       workEl.title = '';
     }
+    toggleSideRow(workEl, !!wtMeta);
   }
 
-  // Title + author
+  // Title
   document.getElementById('modal-title').textContent = ticket.title;
+
+  // Details sidebar: author
   const author = ticket.agentId ? (agents[ticket.agentId] || { name: '???' }) : null;
-  document.getElementById('modal-author').textContent = author ? `\u{270d}\u{fe0f} Author: ${author.name}` : '';
+  setSideValue('modal-author', author ? author.name : '');
 
-  // Assignee display (read-only, agents assign themselves via API)
-  const assigneeDisplay = document.getElementById('modal-assignee-display');
-  if (ticket.assigneeId) {
-    const assignee = agents[ticket.assigneeId] || { name: '???' };
-    assigneeDisplay.textContent = `\u{1f527} Assigned: ${assignee.name}`;
-  } else {
-    assigneeDisplay.textContent = '';
-  }
+  // Assignee (read-only, agents assign themselves via API)
+  const assignee = ticket.assigneeId ? (agents[ticket.assigneeId] || { name: '???' }) : null;
+  setSideValue('modal-assignee-display', assignee ? assignee.name : '', 'Unassigned');
 
-  // Group display
-  const groupDisplay = document.getElementById('modal-group-display');
-  if (groupDisplay) {
-    groupDisplay.textContent = ticket.group ? `\u{26d3}\u{fe0f} Group: ${ticket.group}` : '';
-  }
+  // Group
+  setSideValue('modal-group-display', ticket.group || '');
 
   // Last touched
-  const updatedEl = document.getElementById('modal-updated');
-  if (updatedEl) {
-    updatedEl.textContent = `\u{1f552} Updated ${formatTime(ticket.updatedAt)}`;
-  }
+  setSideValue('modal-updated', formatTime(ticket.updatedAt));
 
   // Blocked reason (prominent when set)
   const blockedEl = document.getElementById('modal-blocked');
@@ -921,8 +927,10 @@ async function openModal(projectId, ticketId) {
   // Reset to comments tab
   switchTab('comments');
 
-  // Show
+  // Show (always start at the top of the ticket)
   modal.classList.remove('hidden');
+  const body = modal.querySelector('.modal-body');
+  if (body) body.scrollTop = 0;
 }
 
 function closeModal(event) {

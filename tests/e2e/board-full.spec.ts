@@ -603,7 +603,7 @@ test.describe('Agentboard E2E – Comprehensive Feature Test', () => {
     // Modal shows the blocked reason prominently
     await card.locator('.ticket-title').click();
     await expect(page.locator('#modal-blocked')).toContainText('Waiting for Apple signing');
-    await expect(page.locator('#modal-updated')).toContainText('Updated');
+    await expect(page.locator('#modal-updated')).toContainText(/ago|now|\d/);
     await page.click('.modal-close');
   });
 

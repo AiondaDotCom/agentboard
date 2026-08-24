@@ -82,37 +82,70 @@
 
   <!-- Ticket Detail Modal -->
   <div id="ticket-modal" class="modal-overlay hidden" onclick="closeModal(event)">
-    <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal modal-ticket" onclick="event.stopPropagation()">
       <div class="modal-header">
-        <div>
-          <span id="modal-ticket-id" class="modal-ticket-id"></span>
-          <span id="modal-column-badge" class="modal-column-badge"></span>
-          <span id="modal-priority" class="modal-priority"></span>
-          <span id="modal-work-type" class="modal-work-type hidden"></span>
-        </div>
+        <span id="modal-ticket-id" class="modal-ticket-id"></span>
         <button class="modal-close" onclick="closeModal()">&times;</button>
       </div>
-      <h2 id="modal-title" class="modal-title"></h2>
-      <div class="modal-meta-row">
-        <div id="modal-author" class="modal-agent"></div>
-        <div id="modal-assignee-display" class="modal-assignee-display"></div>
-        <div id="modal-group-display" class="modal-group-display"></div>
-        <div id="modal-updated" class="modal-updated"></div>
-      </div>
-      <div id="modal-blocked" class="modal-blocked" style="display:none"></div>
-      <div id="modal-deps" class="modal-deps" style="display:none"></div>
-      <div id="modal-desc" class="modal-desc markdown-body"></div>
 
-      <div class="modal-tabs">
-        <button class="modal-tab active" data-tab="comments" onclick="switchTab('comments')">Comments</button>
-        <button class="modal-tab" data-tab="history" onclick="switchTab('history')">History</button>
-      </div>
+      <div class="modal-body">
+        <div class="modal-main">
+          <h2 id="modal-title" class="modal-title"></h2>
+          <div id="modal-blocked" class="modal-blocked" style="display:none"></div>
 
-      <div id="tab-comments" class="modal-tab-content">
-        <div id="modal-comments" class="modal-comments"></div>
-      </div>
-      <div id="tab-history" class="modal-tab-content hidden">
-        <div id="modal-revisions" class="modal-revisions"></div>
+          <div class="modal-section">
+            <div class="modal-section-label">Description</div>
+            <div id="modal-desc" class="modal-desc markdown-body"></div>
+          </div>
+
+          <div id="modal-deps" class="modal-deps" style="display:none"></div>
+
+          <div class="modal-tabs">
+            <button class="modal-tab active" data-tab="comments" onclick="switchTab('comments')">Comments</button>
+            <button class="modal-tab" data-tab="history" onclick="switchTab('history')">History</button>
+          </div>
+
+          <div id="tab-comments" class="modal-tab-content">
+            <div id="modal-comments" class="modal-comments"></div>
+          </div>
+          <div id="tab-history" class="modal-tab-content hidden">
+            <div id="modal-revisions" class="modal-revisions"></div>
+          </div>
+        </div>
+
+        <aside class="modal-side">
+          <div class="modal-side-panel">
+            <div class="modal-side-title">Details</div>
+            <div class="modal-side-row" data-row="status">
+              <span class="modal-side-label">Status</span>
+              <span class="modal-side-value"><span id="modal-column-badge" class="modal-column-badge"></span></span>
+            </div>
+            <div class="modal-side-row" data-row="priority">
+              <span class="modal-side-label">Priority</span>
+              <span class="modal-side-value"><span id="modal-priority" class="modal-priority"></span></span>
+            </div>
+            <div class="modal-side-row" data-row="work-type">
+              <span class="modal-side-label">Work type</span>
+              <span class="modal-side-value"><span id="modal-work-type" class="modal-work-type hidden"></span></span>
+            </div>
+            <div class="modal-side-row" data-row="assignee">
+              <span class="modal-side-label">Assignee</span>
+              <span id="modal-assignee-display" class="modal-side-value modal-assignee-display"></span>
+            </div>
+            <div class="modal-side-row" data-row="author">
+              <span class="modal-side-label">Author</span>
+              <span id="modal-author" class="modal-side-value modal-agent"></span>
+            </div>
+            <div class="modal-side-row" data-row="group">
+              <span class="modal-side-label">Group</span>
+              <span id="modal-group-display" class="modal-side-value modal-group-display"></span>
+            </div>
+            <div class="modal-side-row" data-row="updated">
+              <span class="modal-side-label">Updated</span>
+              <span id="modal-updated" class="modal-side-value modal-updated"></span>
+            </div>
+          </div>
+        </aside>
       </div>
     </div>
   </div>
