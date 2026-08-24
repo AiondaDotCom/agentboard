@@ -51,6 +51,26 @@ export type Priority = (typeof PRIORITIES)[number];
 /** Priority assigned to tickets that don't specify one. */
 export const DEFAULT_PRIORITY: Priority = 'medium';
 
+/**
+ * What kind of work a ticket is – the property that decides which kind of
+ * worker can take it. Deliberately NOT a model name: model names go stale,
+ * the kind of work does not.
+ *
+ * - `mechanical`: the shape of the solution is known, the diff is reviewable
+ *   against a hard done-criterion.
+ * - `judgment`: design, root-cause analysis, weighing options.
+ *
+ * Unclassified tickets carry `null` – there is no sensible default.
+ */
+export const WORK_TYPES = ['mechanical', 'judgment'] as const;
+
+export type WorkType = (typeof WORK_TYPES)[number];
+
+/** Accepted values of the `work_type` list filter ('none' = unclassified). */
+export const WORK_TYPE_FILTERS = [...WORK_TYPES, 'none'] as const;
+
+export type WorkTypeFilter = (typeof WORK_TYPE_FILTERS)[number];
+
 // ---------------------------------------------------------------------------
 // Batch operations
 // ---------------------------------------------------------------------------
@@ -110,6 +130,8 @@ export interface BatchOperationResult {
 export interface TicketListOptions {
   /** Filter by column id (e.g. 'in_review', 'done'). */
   column?: Column | undefined;
+  /** Filter by work type; 'none' returns only unclassified tickets. */
+  work_type?: WorkTypeFilter | undefined;
   /** Page number (1-based). Default: 1. */
   page?: number | undefined;
   /** Items per page. Default: 50. */
@@ -161,6 +183,8 @@ export interface Ticket {
   blockedReason: string | null;
   /** Urgency of the ticket (low | medium | high | critical). */
   priority: Priority;
+  /** Kind of work (mechanical | judgment). Null while unclassified. */
+  workType: WorkType | null;
   /**
    * Ticket ids this ticket depends on. While any of them is not in the last
    * (finished) column, this ticket may only live in the first column.

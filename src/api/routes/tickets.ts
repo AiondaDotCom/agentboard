@@ -17,7 +17,7 @@ export function createTicketRoutes(service: BoardService): Router {
   router.post('/tickets', auth, (req: Request, res: Response): void => {
     try {
       const projectId = routeParam(req, 'id');
-      const { title, description, column, group, blocked_reason, depends_on, priority } = req.body as {
+      const { title, description, column, group, blocked_reason, depends_on, priority, work_type } = req.body as {
         title?: unknown;
         description?: unknown;
         column?: unknown;
@@ -25,6 +25,7 @@ export function createTicketRoutes(service: BoardService): Router {
         blocked_reason?: unknown;
         depends_on?: unknown;
         priority?: unknown;
+        work_type?: unknown;
       };
       const agentId = agentIdOf(req as AuthenticatedRequest);
 
@@ -38,6 +39,7 @@ export function createTicketRoutes(service: BoardService): Router {
         blocked_reason as string | null | undefined,
         depends_on,
         priority,
+        work_type,
       );
       res.status(201).json(ticket);
     } catch (err) {
@@ -45,14 +47,15 @@ export function createTicketRoutes(service: BoardService): Router {
     }
   });
 
-  // GET /api/projects/:id/tickets?column=in_review&page=1&per_page=20
+  // GET /api/projects/:id/tickets?column=in_review&work_type=mechanical&page=1&per_page=20
   router.get('/tickets', (req: Request, res: Response): void => {
     try {
       const projectId = routeParam(req, 'id');
       const column = typeof req.query['column'] === 'string' ? req.query['column'] : undefined;
+      const workType = typeof req.query['work_type'] === 'string' ? req.query['work_type'] : undefined;
       const page = req.query['page'] ? Number(req.query['page']) : undefined;
       const perPage = req.query['per_page'] ? Number(req.query['per_page']) : undefined;
-      res.json(service.getTicketsByProject(projectId, null, { column: column as any, page, per_page: perPage }));
+      res.json(service.getTicketsByProject(projectId, null, { column: column as any, work_type: workType as any, page, per_page: perPage }));
     } catch (err) {
       handleServiceError(res, err);
     }
@@ -79,7 +82,7 @@ export function createTicketRoutes(service: BoardService): Router {
     try {
       const projectId = routeParam(req, 'id');
       const ticketId = routeParam(req, 'ticketId');
-      const { title, description, column, group, blocked_reason, depends_on, priority } = req.body as {
+      const { title, description, column, group, blocked_reason, depends_on, priority, work_type } = req.body as {
         title?: unknown;
         description?: unknown;
         column?: unknown;
@@ -87,6 +90,7 @@ export function createTicketRoutes(service: BoardService): Router {
         blocked_reason?: unknown;
         depends_on?: unknown;
         priority?: unknown;
+        work_type?: unknown;
       };
       const agentId = agentIdOf(req as AuthenticatedRequest);
 
@@ -98,6 +102,7 @@ export function createTicketRoutes(service: BoardService): Router {
         blockedReason?: string | null;
         dependsOn?: unknown;
         priority?: unknown;
+        workType?: unknown;
       } = {};
       if (title !== undefined) updates.title = title as string;
       if (description !== undefined) updates.description = description as string;
@@ -106,6 +111,7 @@ export function createTicketRoutes(service: BoardService): Router {
       if (blocked_reason !== undefined) updates.blockedReason = blocked_reason as string | null;
       if (depends_on !== undefined) updates.dependsOn = depends_on;
       if (priority !== undefined) updates.priority = priority;
+      if (work_type !== undefined) updates.workType = work_type;
 
       const ticket = service.updateTicket(projectId, ticketId, updates, agentId);
       res.json(ticket);

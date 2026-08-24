@@ -26,6 +26,7 @@ export const typeDefs = gql`
     group: String
     blockedReason: String
     priority: String!
+    workType: String
     dependsOn: [String!]!
     agent: Agent
     agentId: String

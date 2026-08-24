@@ -64,6 +64,27 @@ function priorityBadge(ticket, cssClass) {
   return `<span class="${cssClass} prio-${p}" title="Priority: ${meta.label}">${meta.icon} ${meta.label}</span>`;
 }
 
+// Work type: what KIND of work a ticket is – decides who can take it.
+// Unclassified tickets carry no work type and get no badge.
+const WORK_TYPE_META = {
+  mechanical: {
+    label: 'Mechanical',
+    icon: '\u{1F529}',
+    hint: 'Solution shape is known, diff is checkable against a hard done-criterion',
+  },
+  judgment: {
+    label: 'Judgment',
+    icon: '\u{1F9E0}',
+    hint: 'Design, root-cause analysis, weighing trade-offs',
+  },
+};
+
+function workTypeBadge(ticket, cssClass) {
+  const meta = WORK_TYPE_META[ticket.workType];
+  if (!meta) return '';
+  return `<span class="${cssClass} work-${ticket.workType}" title="${meta.label}: ${meta.hint}">${meta.icon} ${meta.label}</span>`;
+}
+
 // ---------------------------------------------------------------------------
 // Agent viewing tracker – ticketId -> Map<agentId, {name, timer}>
 // ---------------------------------------------------------------------------
@@ -529,6 +550,7 @@ function createTicketCard(ticket) {
     ${ticket.description ? `<div class="ticket-desc">${escapeHtml(ticket.description)}</div>` : ''}
     <div class="ticket-meta">
       ${priorityBadge(ticket, 'ticket-priority')}
+      ${workTypeBadge(ticket, 'ticket-work-type')}
       ${author ? `<span class="ticket-agent" title="Author">&#x270d;&#xfe0f; ${escapeHtml(author.name)}</span>` : '<span></span>'}
       ${assignee ? `<span class="ticket-assignee" title="Assigned to">&#x1f527; ${escapeHtml(assignee.name)}</span>` : ''}
       ${depBadge}
@@ -762,6 +784,21 @@ async function openModal(projectId, ticketId) {
     prioEl.textContent = `${meta.icon} ${meta.label}`;
     prioEl.className = `modal-priority prio-${ticket.priority || 'medium'}`;
     prioEl.title = `Priority: ${meta.label}`;
+  }
+
+  // Work type badge (hidden entirely while the ticket is unclassified)
+  const workEl = document.getElementById('modal-work-type');
+  if (workEl) {
+    const wtMeta = WORK_TYPE_META[ticket.workType];
+    if (wtMeta) {
+      workEl.textContent = `${wtMeta.icon} ${wtMeta.label}`;
+      workEl.className = `modal-work-type work-${ticket.workType}`;
+      workEl.title = `${wtMeta.label}: ${wtMeta.hint}`;
+    } else {
+      workEl.textContent = '';
+      workEl.className = 'modal-work-type hidden';
+      workEl.title = '';
+    }
   }
 
   // Title + author
@@ -1260,7 +1297,7 @@ function subscribe(socket, id, eventName, projectId) {
   } else if (eventName === 'commentAdded') {
     query = `subscription { ${eventName}(projectId: "${projectId}") { id ticketId agent { id name } body createdAt } }`;
   } else {
-    query = `subscription { ${eventName}(projectId: "${projectId}") { id projectId title description column position group blockedReason priority dependsOn agentId assigneeId agent { id name } assignee { id name } createdAt updatedAt } }`;
+    query = `subscription { ${eventName}(projectId: "${projectId}") { id projectId title description column position group blockedReason priority workType dependsOn agentId assigneeId agent { id name } assignee { id name } createdAt updatedAt } }`;
   }
 
   socket.send(JSON.stringify({

@@ -1707,6 +1707,38 @@ tr.overview-flash {
   color: var(--text-dim);
 }
 
+/* Work type badge on cards + modal (absent while unclassified) */
+.ticket-work-type {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.modal-work-type {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 12px;
+  white-space: nowrap;
+  margin-left: 6px;
+}
+
+.ticket-work-type.work-mechanical,
+.modal-work-type.work-mechanical {
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.34);
+  color: #7dd3fc;
+}
+
+.ticket-work-type.work-judgment,
+.modal-work-type.work-judgment {
+  background: rgba(167, 139, 250, 0.13);
+  border: 1px solid rgba(167, 139, 250, 0.36);
+  color: #c4b5fd;
+}
+
 /* Dependency badge on cards */
 .ticket-deps {
   cursor: pointer;

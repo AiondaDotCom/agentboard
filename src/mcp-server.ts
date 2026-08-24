@@ -104,15 +104,16 @@ export function registerMcpTools(
     async ({ project_id }) => wrap(() => { service.deleteProject(project_id, agentId); return { deleted: true }; }));
 
   // --- Tickets ---
-  mcp.tool('list_tickets', 'List all tickets in a project (returns summary without description – use get_ticket for full details)',
+  mcp.tool('list_tickets', 'List all tickets in a project (returns summary without description – use get_ticket for full details). Use "work_type" to pull only the tickets that match a worker: mechanical work for a cheap deterministic model, judgment work for a reasoning model.',
     {
       project_id: z.string().describe('Project ID'),
       column: z.string().optional().describe('Filter by column id – must be one of the project\'s configured columns (see get_project)'),
+      work_type: z.enum(['mechanical', 'judgment', 'none']).optional().describe('Filter by kind of work: "mechanical" (solution shape is known), "judgment" (design / root-cause / trade-offs), "none" (still unclassified)'),
       page: z.number().int().min(1).optional().describe('Page number (default: 1)'),
       per_page: z.number().int().min(1).max(100).optional().describe('Items per page (default: 50, max: 100)'),
     },
-    async ({ project_id, column, page, per_page }) => wrap(() => {
-      const result = service.getTicketsByProject(project_id, agentId, { column, page, per_page });
+    async ({ project_id, column, work_type, page, per_page }) => wrap(() => {
+      const result = service.getTicketsByProject(project_id, agentId, { column, work_type, page, per_page });
       return {
         ...result,
         data: result.data.map(({ description, ...rest }) => rest),
@@ -133,10 +134,11 @@ export function registerMcpTools(
     blocked_reason: z.string().optional().describe('Why this ticket cannot proceed (external dependency, missing credentials, etc.). Shown prominently on the board.'),
     depends_on: z.array(z.string()).optional().describe('Ticket ids this ticket depends on. While any of them is not in the last (done) column, this ticket cannot be moved out of the first column.'),
     priority: z.enum(['low', 'medium', 'high', 'critical']).optional().describe('Ticket priority (default: medium). Shown as a colored badge on the board; tickets are ordered by priority within a column.'),
-  }, async ({ project_id, title, description, column, group, blocked_reason, depends_on, priority }) =>
-    wrap(() => service.createTicket(project_id, title, description, column, agentId, group, blocked_reason, depends_on, priority)));
+    work_type: z.enum(['mechanical', 'judgment']).optional().describe('What kind of work this is: "mechanical" = the shape of the solution is known and the diff is checkable against a hard done-criterion; "judgment" = design, root-cause analysis, weighing trade-offs. Decides which kind of worker can take the ticket – do NOT put model names here. Omit if you honestly cannot tell.'),
+  }, async ({ project_id, title, description, column, group, blocked_reason, depends_on, priority, work_type }) =>
+    wrap(() => service.createTicket(project_id, title, description, column, agentId, group, blocked_reason, depends_on, priority, work_type)));
 
-  mcp.tool('update_ticket', 'Update a ticket (title, description, column, group, blocked_reason, depends_on, or priority). To update SEVERAL tickets, use the `batch` tool instead (much faster). Descriptions support Markdown formatting. Moving to a column other than the first is refused while the ticket has unfinished dependencies – the error explains which tickets must be finished first.', {
+  mcp.tool('update_ticket', 'Update a ticket (title, description, column, group, blocked_reason, depends_on, priority, or work_type). To update SEVERAL tickets, use the `batch` tool instead (much faster). Descriptions support Markdown formatting. Moving to a column other than the first is refused while the ticket has unfinished dependencies – the error explains which tickets must be finished first.', {
     project_id: z.string().describe('Project ID'),
     ticket_id: z.string().describe('Ticket ID'),
     title: z.string().optional().describe('New title'),
@@ -146,10 +148,11 @@ export function registerMcpTools(
     blocked_reason: z.string().optional().describe('Why the ticket is blocked (external dependency). Pass an empty string to clear it.'),
     depends_on: z.array(z.string()).optional().describe('Replaces the full dependency list (ticket ids that must be done first). Pass an empty array to clear all dependencies.'),
     priority: z.enum(['low', 'medium', 'high', 'critical']).optional().describe('New ticket priority. Shown as a colored badge on the board; tickets are ordered by priority within a column.'),
-  }, async ({ project_id, ticket_id, title, description, column, group, blocked_reason, depends_on, priority }) => {
+    work_type: z.enum(['mechanical', 'judgment', '']).optional().describe('New kind of work: "mechanical" (solution shape is known) or "judgment" (design / root-cause / trade-offs). Pass an empty string to clear the classification.'),
+  }, async ({ project_id, ticket_id, title, description, column, group, blocked_reason, depends_on, priority, work_type }) => {
     const updates: {
       title?: string; description?: string; column?: string; group?: string | null;
-      blockedReason?: string | null; dependsOn?: unknown; priority?: unknown;
+      blockedReason?: string | null; dependsOn?: unknown; priority?: unknown; workType?: unknown;
     } = {};
     if (title !== undefined) updates.title = title;
     if (description !== undefined) updates.description = description;
@@ -158,6 +161,7 @@ export function registerMcpTools(
     if (blocked_reason !== undefined) updates.blockedReason = blocked_reason;
     if (depends_on !== undefined) updates.dependsOn = depends_on;
     if (priority !== undefined) updates.priority = priority;
+    if (work_type !== undefined) updates.workType = work_type;
     return wrap(() => service.updateTicket(project_id, ticket_id, updates, agentId));
   });
 

@@ -9,7 +9,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { AgentboardDB } from '../db/database.js';
 import { pubsub, EVENTS } from '../graphql/pubsub.js';
-import { BATCH_OPS, COLUMN_ID_RE, DEFAULT_COLUMNS, DEFAULT_PRIORITY, MAX_BATCH_OPS, PRIORITIES } from '../types.js';
+import { BATCH_OPS, COLUMN_ID_RE, DEFAULT_COLUMNS, DEFAULT_PRIORITY, MAX_BATCH_OPS, PRIORITIES, WORK_TYPES, WORK_TYPE_FILTERS } from '../types.js';
 import type {
   Agent,
   AgentPublic,
@@ -27,6 +27,8 @@ import type {
   TicketListOptions,
   PaginatedResult,
   Priority,
+  WorkType,
+  WorkTypeFilter,
 } from '../types.js';
 import { NotFoundError, ValidationError, DuplicateError, ConflictError } from './errors.js';
 
@@ -230,6 +232,7 @@ export class BoardService {
     blockedReason?: string | null,
     dependsOn?: unknown,
     priority?: unknown,
+    workType?: unknown,
   ): Ticket {
     const project = this.requireProject(projectId);
 
@@ -262,6 +265,8 @@ export class BoardService {
       ? DEFAULT_PRIORITY
       : this.validatePriority(priority);
 
+    const work = workType === undefined ? null : this.validateWorkType(workType);
+
     const ticket = this.db.createTicket(
       projectId,
       title.trim(),
@@ -272,6 +277,7 @@ export class BoardService {
       reason,
       deps,
       prio,
+      work,
     );
 
     this.db.logActivity(
@@ -306,10 +312,17 @@ export class BoardService {
     if (options?.column) {
       this.requireValidColumn(project, options.column);
     }
+    if (options?.work_type !== undefined) {
+      this.validateWorkTypeFilter(options.work_type);
+    }
     const result = this.db.getTicketsByProject(projectId, options);
     if (actorId) {
       const project = this.db.getProject(projectId);
-      const filterInfo = options?.column ? ` (column=${options.column})` : '';
+      const filters = [
+        options?.column ? `column=${options.column}` : '',
+        options?.work_type ? `work_type=${options.work_type}` : '',
+      ].filter(Boolean);
+      const filterInfo = filters.length > 0 ? ` (${filters.join(', ')})` : '';
       this.audit(actorId, 'LIST', `tickets in '${project?.name ?? projectId}'${filterInfo}`, `${result.total} total, page ${result.page}/${result.total_pages}`);
       this.logAndPublishActivity(actorId, projectId, null, 'tickets_listed', `Listed ${result.data.length} of ${result.total} tickets${filterInfo}`);
     }
@@ -327,6 +340,7 @@ export class BoardService {
       blockedReason?: string | null;
       dependsOn?: unknown;
       priority?: unknown;
+      workType?: unknown;
     },
     actorId?: string | null,
   ): Ticket {
@@ -357,6 +371,7 @@ export class BoardService {
       blockedReason?: string | null;
       dependsOn?: string[];
       priority?: Priority;
+      workType?: WorkType | null;
     } = {};
     if (typeof updates.title === 'string') cleanUpdates.title = updates.title.trim();
     if (typeof updates.description === 'string') cleanUpdates.description = updates.description;
@@ -372,6 +387,9 @@ export class BoardService {
     }
     if (updates.priority !== undefined) {
       cleanUpdates.priority = this.validatePriority(updates.priority);
+    }
+    if ('workType' in updates) {
+      cleanUpdates.workType = this.validateWorkType(updates.workType);
     }
 
     // Dependency gate: moving to any column but the first requires all
@@ -719,6 +737,7 @@ export class BoardService {
       case 'list_tickets':
         return this.getTicketsByProject(str('project_id'), actorId, {
           column: optStr('column'),
+          work_type: optStr('work_type') as WorkTypeFilter | undefined,
           page: args['page'] as number | undefined,
           per_page: args['per_page'] as number | undefined,
         });
@@ -735,11 +754,13 @@ export class BoardService {
           args['blocked_reason'] as string | null | undefined,
           args['depends_on'],
           args['priority'],
+          args['work_type'],
         );
       case 'update_ticket': {
         const updates: {
           title?: string; description?: string; column?: string; group?: string | null;
           blockedReason?: string | null; dependsOn?: unknown; priority?: unknown;
+          workType?: unknown;
         } = {};
         if (args['title'] !== undefined) updates.title = args['title'] as string;
         if (args['description'] !== undefined) updates.description = args['description'] as string;
@@ -748,6 +769,7 @@ export class BoardService {
         if (args['blocked_reason'] !== undefined) updates.blockedReason = args['blocked_reason'] as string | null;
         if (args['depends_on'] !== undefined) updates.dependsOn = args['depends_on'];
         if (args['priority'] !== undefined) updates.priority = args['priority'];
+        if (args['work_type'] !== undefined) updates.workType = args['work_type'];
         return this.updateTicket(str('project_id'), str('ticket_id'), updates, actorId);
       }
       case 'move_ticket':
@@ -853,6 +875,31 @@ export class BoardService {
       );
     }
     return value as Priority;
+  }
+
+  /**
+   * Normalises a work type: null / '' clear the classification, anything else
+   * must be a known work type.
+   */
+  private validateWorkType(value: unknown): WorkType | null {
+    if (value === null) return null;
+    if (typeof value === 'string' && value.trim().length === 0) return null;
+    if (typeof value !== 'string' || !(WORK_TYPES as readonly string[]).includes(value)) {
+      throw new ValidationError(
+        `Invalid "work_type" value "${String(value)}". Valid work types: ${WORK_TYPES.join(', ')} (or empty to clear)`,
+      );
+    }
+    return value as WorkType;
+  }
+
+  /** Throws unless the value is a usable work_type list filter. */
+  private validateWorkTypeFilter(value: unknown): WorkTypeFilter {
+    if (typeof value !== 'string' || !(WORK_TYPE_FILTERS as readonly string[]).includes(value)) {
+      throw new ValidationError(
+        `Invalid "work_type" filter "${String(value)}". Valid filters: ${WORK_TYPE_FILTERS.join(', ')}`,
+      );
+    }
+    return value as WorkTypeFilter;
   }
 
   /** Throws unless columnId exists in the project's configured columns. */

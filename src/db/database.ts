@@ -23,6 +23,7 @@ import type {
   TicketListOptions,
   PaginatedResult,
   Priority,
+  WorkType,
 } from '../types.js';
 import { DEFAULT_COLUMNS, LEGACY_COLUMNS, DEFAULT_PRIORITY } from '../types.js';
 
@@ -55,6 +56,7 @@ interface TicketRow {
   group_name: string | null;
   blocked_reason: string | null;
   priority: string;
+  work_type: string | null;
   agent_id: string | null;
   assignee_id: string | null;
   comment_count: number;
@@ -149,6 +151,10 @@ export class AgentboardDB {
       if (!columns.some((c) => c.name === 'priority')) {
         this.db.exec("ALTER TABLE tickets ADD COLUMN priority TEXT NOT NULL DEFAULT 'medium'");
       }
+      if (!columns.some((c) => c.name === 'work_type')) {
+        // Nullable on purpose: existing tickets are unclassified, not "default".
+        this.db.exec('ALTER TABLE tickets ADD COLUMN work_type TEXT');
+      }
     }
 
     const hasProjects = this.db
@@ -223,6 +229,7 @@ export class AgentboardDB {
       group: row.group_name ?? null,
       blockedReason: row.blocked_reason ?? null,
       priority: row.priority as Priority,
+      workType: (row.work_type ?? null) as WorkType | null,
       dependsOn: row.depends_on ? row.depends_on.split(',') : [],
       agentId: row.agent_id,
       assigneeId: row.assignee_id ?? null,
@@ -445,6 +452,7 @@ export class AgentboardDB {
     blockedReason?: string | null,
     dependsOn?: string[],
     priority?: Priority,
+    workType?: WorkType | null,
   ): Ticket {
     const id = uuidv4();
     const desc = description ?? '';
@@ -463,9 +471,9 @@ export class AgentboardDB {
     const position = maxPos.max_pos + 1;
 
     const stmt = this.db.prepare(
-      'INSERT INTO tickets (id, project_id, title, description, column_name, position, agent_id, group_name, blocked_reason, priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO tickets (id, project_id, title, description, column_name, position, agent_id, group_name, blocked_reason, priority, work_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     );
-    stmt.run(id, projectId, title, desc, col, position, agent, groupName, blockedReason ?? null, prio);
+    stmt.run(id, projectId, title, desc, col, position, agent, groupName, blockedReason ?? null, prio, workType ?? null);
 
     if (dependsOn && dependsOn.length > 0) {
       this.setTicketDependencies(id, dependsOn);
@@ -511,6 +519,7 @@ export class AgentboardDB {
 
   getTicketsByProject(projectId: string, options?: TicketListOptions): PaginatedResult<Ticket> {
     const column = options?.column;
+    const workType = options?.work_type;
     const page = Math.max(1, options?.page ?? 1);
     const perPage = Math.max(1, options?.per_page ?? 50);
     const offset = (page - 1) * perPage;
@@ -521,6 +530,13 @@ export class AgentboardDB {
     if (column) {
       whereClauses.push('t.column_name = ?');
       params.push(column);
+    }
+
+    if (workType === 'none') {
+      whereClauses.push('t.work_type IS NULL');
+    } else if (workType) {
+      whereClauses.push('t.work_type = ?');
+      params.push(workType);
     }
 
     const where = whereClauses.join(' AND ');
@@ -557,6 +573,7 @@ export class AgentboardDB {
       blockedReason?: string | null;
       dependsOn?: string[];
       priority?: Priority;
+      workType?: WorkType | null;
     },
     actorId?: string | null,
   ): Ticket | undefined {
@@ -575,6 +592,8 @@ export class AgentboardDB {
       'blockedReason' in updates ? (updates.blockedReason ?? null) : existing.blockedReason;
     const newDependsOn = updates.dependsOn ?? existing.dependsOn;
     const newPriority = updates.priority ?? existing.priority;
+    const newWorkType =
+      'workType' in updates ? (updates.workType ?? null) : existing.workType;
 
     // Log revisions for each changed field BEFORE applying the update
     const actor = actorId !== undefined ? actorId : null;
@@ -602,6 +621,9 @@ export class AgentboardDB {
     if (newPriority !== existing.priority) {
       this.logRevision(existing.id, actor, 'priority', existing.priority, newPriority);
     }
+    if (newWorkType !== existing.workType) {
+      this.logRevision(existing.id, actor, 'work_type', existing.workType ?? '', newWorkType ?? '');
+    }
 
     // If column changed, compute new position at the end of target column
     let newPosition = existing.position;
@@ -617,7 +639,7 @@ export class AgentboardDB {
     this.db
       .prepare(
         `UPDATE tickets
-         SET title = ?, description = ?, column_name = ?, position = ?, group_name = ?, agent_id = ?, blocked_reason = ?, priority = ?, updated_at = datetime('now')
+         SET title = ?, description = ?, column_name = ?, position = ?, group_name = ?, agent_id = ?, blocked_reason = ?, priority = ?, work_type = ?, updated_at = datetime('now')
          WHERE id = ? AND project_id = ?`,
       )
       .run(
@@ -629,6 +651,7 @@ export class AgentboardDB {
         newAgentId,
         newBlockedReason,
         newPriority,
+        newWorkType,
         existing.id,
         projectId,
       );
