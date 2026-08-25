@@ -16,6 +16,10 @@ from urllib.request import Request, urlopen
 SCAN_SECONDS = 10
 HEARTBEAT_SECONDS = 60
 RECENT_SESSION_SECONDS = 600
+DISCOVERY_SECONDS = 30
+
+_file_cache: dict[Path, tuple[float, list[Path]]] = {}
+_state_cache: dict[Path, tuple[int, bool]] = {}
 
 
 def process_counts() -> tuple[int, int]:
@@ -42,7 +46,11 @@ def process_counts() -> tuple[int, int]:
 def recent_jsonl(root: Path) -> list[Path]:
     if not root.is_dir():
         return []
-    cutoff = time.time() - RECENT_SESSION_SECONDS
+    now = time.time()
+    cached = _file_cache.get(root)
+    if cached is not None and now < cached[0]:
+        return [path for path in cached[1] if is_recent(path, now)]
+    cutoff = now - RECENT_SESSION_SECONDS
     files: list[Path] = []
     for path in root.rglob("*.jsonl"):
         try:
@@ -50,34 +58,50 @@ def recent_jsonl(root: Path) -> list[Path]:
                 files.append(path)
         except OSError:
             continue
+    _file_cache[root] = (now + DISCOVERY_SECONDS, files)
     return files
 
 
-def tail_records(path: Path) -> list[dict]:
+def is_recent(path: Path, now: float) -> bool:
+    try:
+        return path.stat().st_mtime >= now - RECENT_SESSION_SECONDS
+    except OSError:
+        return False
+
+
+def records_since(path: Path, offset: int) -> tuple[list[dict], int]:
     try:
         with path.open("rb") as handle:
-            handle.seek(0, os.SEEK_END)
-            size = handle.tell()
-            handle.seek(max(0, size - 262_144))
-            data = handle.read().decode("utf-8", errors="ignore")
+            handle.seek(offset)
+            raw = handle.read()
     except OSError:
-        return []
-    if size > 262_144:
-        data = data.split("\n", 1)[-1]
+        return [], offset
+    complete_length = len(raw)
+    if raw and not raw.endswith(b"\n"):
+        last_newline = raw.rfind(b"\n")
+        complete_length = last_newline + 1
+        raw = raw[:complete_length]
     records = []
-    for line in data.splitlines():
+    for line in raw.decode("utf-8", errors="ignore").splitlines():
         try:
             records.append(json.loads(line))
         except (ValueError, TypeError):
             continue
-    return records
+    return records, offset + complete_length
 
 
-def codex_working() -> int:
-    working = 0
-    for path in recent_jsonl(Path.home() / ".codex" / "sessions"):
-        state = None
-        for record in tail_records(path):
+def cached_state(path: Path, kind: str) -> bool:
+    try:
+        stat = path.stat()
+    except OSError:
+        return False
+    cached = _state_cache.get(path, (0, False))
+    offset, state = cached if cached[0] <= stat.st_size else (0, False)
+    if offset == stat.st_size:
+        return state
+    records, offset = records_since(path, offset)
+    if kind == "codex":
+        for record in records:
             if record.get("type") != "event_msg":
                 continue
             event = record.get("payload", {}).get("type")
@@ -85,23 +109,24 @@ def codex_working() -> int:
                 state = True
             elif event in ("task_complete", "turn_aborted"):
                 state = False
-        working += state is True
-    return working
-
-
-def claude_working() -> int:
-    working = 0
-    for path in recent_jsonl(Path.home() / ".claude" / "projects"):
-        state = None
-        for record in tail_records(path):
+    else:
+        for record in records:
             record_type = record.get("type")
             if record_type == "user":
                 state = True
             elif record_type == "assistant":
-                stop_reason = record.get("message", {}).get("stop_reason")
-                state = stop_reason != "end_turn"
-        working += state is True
-    return working
+                state = record.get("message", {}).get("stop_reason") != "end_turn"
+
+    _state_cache[path] = (offset, state)
+    return state
+
+
+def codex_working() -> int:
+    return sum(cached_state(path, "codex") for path in recent_jsonl(Path.home() / ".codex" / "sessions"))
+
+
+def claude_working() -> int:
+    return sum(cached_state(path, "claude") for path in recent_jsonl(Path.home() / ".claude" / "projects"))
 
 
 def status() -> dict[str, int | str]:
@@ -121,7 +146,12 @@ def send(api_url: str, api_key: str, payload: dict[str, int | str]) -> None:
     request = Request(
         api_url.rstrip("/") + "/api/runtime",
         data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json", "X-Api-Key": api_key},
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "Agentboard-Runtime-Collector/1.0",
+            "X-Api-Key": api_key,
+        },
         method="POST",
     )
     with urlopen(request, timeout=10) as response:
