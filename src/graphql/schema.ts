@@ -95,6 +95,8 @@ export const typeDefs = gql`
     idle: Int!
     codexWorking: Int!
     claudeWorking: Int!
+    workingSince: String
+    workingForSeconds: Int!
     hosts: [RuntimeReport!]!
   }
 

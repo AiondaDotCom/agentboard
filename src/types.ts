@@ -24,6 +24,8 @@ export interface RuntimeStatus {
   idle: number;
   codexWorking: number;
   claudeWorking: number;
+  workingSince: string | null;
+  workingForSeconds: number;
   hosts: RuntimeReport[];
 }
 

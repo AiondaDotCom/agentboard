@@ -8,6 +8,8 @@ let ws = null;
 let agents = {};
 let activities = [];
 let runtimePollTimer = null;
+let runtimeDurationTimer = null;
+let runtimeStatusSnapshot = null;
 
 // Column config of the currently opened project: [{id, title}, ...]
 // First column = inbox for new tickets, last column = finished/done.
@@ -237,26 +239,50 @@ async function loadAgents() {
   document.getElementById('agent-count').textContent = `${agentList.length} agent${agentList.length !== 1 ? 's' : ''}`;
 }
 
+function formatWorkingDuration(totalSeconds) {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  if (seconds < 60) return `${seconds} second${seconds === 1 ? '' : 's'}`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'}`;
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  const dayText = `${days} day${days === 1 ? '' : 's'}`;
+  if (remainingHours === 0) return dayText;
+  return `${dayText} and ${remainingHours} hour${remainingHours === 1 ? '' : 's'}`;
+}
+
+function renderRuntimeStatus(status) {
+  const el = document.getElementById('runtime-status');
+  const text = document.getElementById('runtime-status-text');
+  el.classList.remove('runtime-working', 'runtime-idle', 'runtime-offline');
+  const hostDetails = status.hosts.map(host =>
+    `${host.host}: ${host.workingCodex} Codex + ${host.workingClaude} Claude working, ${host.idleCodex + host.idleClaude} idle`
+  ).join('\n');
+  if (status.working > 0) {
+    el.classList.add('runtime-working');
+    const elapsed = status.workingSince
+      ? Math.max(0, Math.floor((Date.now() - Date.parse(status.workingSince)) / 1000))
+      : status.workingForSeconds;
+    text.textContent = `${status.working} AI${status.working === 1 ? '' : 's'} working (for ${formatWorkingDuration(elapsed)})`;
+  } else {
+    el.classList.add(status.hosts.length ? 'runtime-idle' : 'runtime-offline');
+    text.textContent = '0 AIs working';
+  }
+  el.title = status.hosts.length
+    ? `${status.codexWorking} Codex, ${status.claudeWorking} Claude working; ${status.idle} idle${status.workingSince ? `\nWorking non-stop since ${new Date(status.workingSince).toLocaleString()}` : ''}\n${hostDetails}`
+    : 'No current runtime heartbeat from cortex';
+}
+
 async function loadRuntimeStatus() {
   const el = document.getElementById('runtime-status');
   const text = document.getElementById('runtime-status-text');
   try {
-    const status = await fetchJSON('/api/runtime');
-    el.classList.remove('runtime-working', 'runtime-idle', 'runtime-offline');
-    const hostDetails = status.hosts.map(host =>
-      `${host.host}: ${host.workingCodex} Codex + ${host.workingClaude} Claude working, ${host.idleCodex + host.idleClaude} idle`
-    ).join('\n');
-    if (status.working > 0) {
-      el.classList.add('runtime-working');
-      text.textContent = `${status.working} AI${status.working === 1 ? '' : 's'} working`;
-    } else {
-      el.classList.add(status.hosts.length ? 'runtime-idle' : 'runtime-offline');
-      text.textContent = '0 AIs working';
-    }
-    el.title = status.hosts.length
-      ? `${status.codexWorking} Codex, ${status.claudeWorking} Claude working; ${status.idle} idle\n${hostDetails}`
-      : 'No current runtime heartbeat from cortex';
+    runtimeStatusSnapshot = await fetchJSON('/api/runtime');
+    renderRuntimeStatus(runtimeStatusSnapshot);
   } catch {
+    runtimeStatusSnapshot = null;
     el.classList.remove('runtime-working', 'runtime-idle');
     el.classList.add('runtime-offline');
     text.textContent = 'AI status offline';
@@ -1287,7 +1313,7 @@ function connectWebSocket(projectId) {
       subscribeGlobal(socket, '6', 'agentChanged', 'id name createdAt');
       subscribeGlobal(socket, '7', 'projectChanged', 'id name description columns { id title } createdAt');
       subscribeGlobal(socket, '9', 'auditAdded', 'id agentId method path statusCode requestBody timestamp');
-      subscribeGlobal(socket, '11', 'runtimeStatusChanged', 'working idle codexWorking claudeWorking hosts { host workingCodex workingClaude idleCodex idleClaude reportedAt }');
+      subscribeGlobal(socket, '11', 'runtimeStatusChanged', 'working idle codexWorking claudeWorking workingSince workingForSeconds hosts { host workingCodex workingClaude idleCodex idleClaude reportedAt }');
       // Project-specific subscriptions only when viewing a project
       if (projectId) {
         subscribe(socket, '1', 'ticketCreated', projectId);
@@ -1553,6 +1579,9 @@ async function init() {
   }
   hideLoading();
   runtimePollTimer = setInterval(loadRuntimeStatus, 15000);
+  runtimeDurationTimer = setInterval(() => {
+    if (runtimeStatusSnapshot) renderRuntimeStatus(runtimeStatusSnapshot);
+  }, 1000);
 
   // Start overview polling + WS if still on overview
   if (!currentProjectId) {

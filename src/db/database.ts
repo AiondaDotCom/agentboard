@@ -323,6 +323,10 @@ export class AgentboardDB {
       .run(key, value);
   }
 
+  deleteSetting(key: string): void {
+    this.db.prepare('DELETE FROM settings WHERE key = ?').run(key);
+  }
+
   /**
    * Returns the admin API key. If none exists yet, generates one and stores it.
    */

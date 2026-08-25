@@ -72,7 +72,9 @@ open http://localhost:3000
 
 The header shows how many Codex and Claude instances are actively processing a
 turn. Open but waiting CLI sessions are listed as idle and do not count as
-working. Runtime reports expire after 130 seconds, so a stopped collector or an
+working. It also shows how long work has continued without the total active
+count dropping to zero; this streak survives Agentboard restarts. Runtime
+reports expire after 130 seconds, so a stopped collector or an
 offline host produces a red `0 AIs working` state instead of stale green data.
 
 Collectors report to `POST /api/runtime` with a dedicated key in the

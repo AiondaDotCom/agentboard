@@ -47,6 +47,39 @@ describe('runtime activity reporting', () => {
     expect(db.getRuntimeReports()).toHaveLength(1);
   });
 
+  it('tracks one persistent non-stop working streak across count changes', () => {
+    expect(service.getRuntimeStatus()).toMatchObject({
+      working: 0,
+      workingSince: null,
+      workingForSeconds: 0,
+    });
+
+    const started = service.reportRuntime(payload);
+    expect(started.workingSince).toBeTruthy();
+    expect(started.workingForSeconds).toBe(0);
+
+    const historicalStart = new Date(Date.now() - 3_661_000).toISOString();
+    db.setSetting('runtime_work_started_at', historicalStart);
+    const scaledUp = service.reportRuntime({ ...payload, workingCodex: 5 });
+    expect(scaledUp.workingSince).toBe(historicalStart);
+    expect(scaledUp.workingForSeconds).toBeGreaterThanOrEqual(3660);
+
+    db.deleteSetting('runtime_work_started_at');
+    const recovered = service.reportRuntime(payload);
+    expect(recovered.workingSince).toBeTruthy();
+
+    const stopped = service.reportRuntime({
+      ...payload,
+      workingCodex: 0,
+      workingClaude: 0,
+    });
+    expect(stopped).toMatchObject({ working: 0, workingSince: null, workingForSeconds: 0 });
+    expect(db.getSetting('runtime_work_started_at')).toBeUndefined();
+
+    service.reportRuntime({ ...payload, workingCodex: 0, workingClaude: 0 });
+    expect(db.getSetting('runtime_work_started_at')).toBeUndefined();
+  });
+
   it.each([
     [null, 'host'],
     [{ ...payload, host: '' }, 'host'],

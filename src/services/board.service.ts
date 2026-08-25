@@ -90,7 +90,15 @@ export class BoardService {
         throw new ValidationError(`Invalid "${field}" field`);
       }
     }
+    const wasWorking = this.getRuntimeStatus().working > 0;
     this.db.upsertRuntimeReport(report as Omit<RuntimeReport, 'reportedAt'>);
+    const updatedStatus = this.getRuntimeStatus();
+    const existingStart = this.db.getSetting('runtime_work_started_at');
+    if (updatedStatus.working > 0 && (!wasWorking || existingStart === undefined)) {
+      this.db.setSetting('runtime_work_started_at', new Date().toISOString());
+    } else if (updatedStatus.working === 0 && existingStart !== undefined) {
+      this.db.deleteSetting('runtime_work_started_at');
+    }
     const status = this.getRuntimeStatus();
     pubsub.publish(EVENTS.RUNTIME_STATUS_CHANGED, { runtimeStatusChanged: status });
     return status;
@@ -98,11 +106,17 @@ export class BoardService {
 
   getRuntimeStatus(): RuntimeStatus {
     const hosts = this.db.getRuntimeReports();
+    const working = hosts.reduce((sum, host) => sum + host.workingCodex + host.workingClaude, 0);
+    const workingSince = working > 0 ? this.db.getSetting('runtime_work_started_at') ?? null : null;
     return {
-      working: hosts.reduce((sum, host) => sum + host.workingCodex + host.workingClaude, 0),
+      working,
       idle: hosts.reduce((sum, host) => sum + host.idleCodex + host.idleClaude, 0),
       codexWorking: hosts.reduce((sum, host) => sum + host.workingCodex, 0),
       claudeWorking: hosts.reduce((sum, host) => sum + host.workingClaude, 0),
+      workingSince,
+      workingForSeconds: workingSince === null
+        ? 0
+        : Math.max(0, Math.floor((Date.now() - Date.parse(workingSince)) / 1000)),
       hosts,
     };
   }
