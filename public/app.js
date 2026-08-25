@@ -8,6 +8,8 @@ let ws = null;
 let agents = {};
 let activities = [];
 let runtimePollTimer = null;
+let runtimeDurationTimer = null;
+let runtimeStatusSnapshot = null;
 
 // Column config of the currently opened project: [{id, title}, ...]
 // First column = inbox for new tickets, last column = finished/done.
@@ -237,12 +239,18 @@ async function loadAgents() {
   document.getElementById('agent-count').textContent = `${agentList.length} agent${agentList.length !== 1 ? 's' : ''}`;
 }
 
-function formatWorkingSince(isoTimestamp) {
-  return new Date(isoTimestamp).toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
+function formatWorkingDuration(totalSeconds) {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  if (seconds < 60) return `${seconds} second${seconds === 1 ? '' : 's'}`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'}`;
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  const dayText = `${days} day${days === 1 ? '' : 's'}`;
+  if (remainingHours === 0) return dayText;
+  return `${dayText} and ${remainingHours} hour${remainingHours === 1 ? '' : 's'}`;
 }
 
 function renderRuntimeStatus(status) {
@@ -254,7 +262,10 @@ function renderRuntimeStatus(status) {
   ).join('\n');
   if (status.working > 0) {
     el.classList.add('runtime-working');
-    const since = status.workingSince ? ` since ${formatWorkingSince(status.workingSince)}` : '';
+    const elapsed = status.workingSince
+      ? Math.max(0, Math.floor((Date.now() - Date.parse(status.workingSince)) / 1000))
+      : status.workingForSeconds;
+    const since = ` since ${formatWorkingDuration(elapsed)}`;
     text.textContent = `${status.working} AI${status.working === 1 ? '' : 's'} working${since}`;
   } else {
     el.classList.add(status.hosts.length ? 'runtime-idle' : 'runtime-offline');
@@ -269,9 +280,10 @@ async function loadRuntimeStatus() {
   const el = document.getElementById('runtime-status');
   const text = document.getElementById('runtime-status-text');
   try {
-    const status = await fetchJSON('/api/runtime');
-    renderRuntimeStatus(status);
+    runtimeStatusSnapshot = await fetchJSON('/api/runtime');
+    renderRuntimeStatus(runtimeStatusSnapshot);
   } catch {
+    runtimeStatusSnapshot = null;
     el.classList.remove('runtime-working', 'runtime-idle');
     el.classList.add('runtime-offline');
     text.textContent = 'AI status offline';
@@ -1568,6 +1580,9 @@ async function init() {
   }
   hideLoading();
   runtimePollTimer = setInterval(loadRuntimeStatus, 15000);
+  runtimeDurationTimer = setInterval(() => {
+    if (runtimeStatusSnapshot) renderRuntimeStatus(runtimeStatusSnapshot);
+  }, 1000);
 
   // Start overview polling + WS if still on overview
   if (!currentProjectId) {
