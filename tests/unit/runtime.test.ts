@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import Database from 'better-sqlite3';
 import express from 'express';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import request from 'supertest';
 import { AgentboardDB } from '../../src/db/database.js';
 import { createRuntimeRoutes } from '../../src/api/routes/runtime.js';
@@ -14,8 +18,10 @@ describe('runtime activity reporting', () => {
     host: 'cortex',
     workingCodex: 2,
     workingClaude: 1,
+    workingOpenCode: 0,
     idleCodex: 3,
     idleClaude: 4,
+    idleOpenCode: 0,
   };
 
   beforeEach(() => {
@@ -34,10 +40,44 @@ describe('runtime activity reporting', () => {
     expect(service.getOrCreateRuntimeApiKey()).toBe(key);
   });
 
+  it('migrates existing runtime reports for OpenCode', () => {
+    const directory = mkdtempSync(path.join(tmpdir(), 'agentboard-runtime-'));
+    const databasePath = path.join(directory, 'legacy.db');
+    const legacy = new Database(databasePath);
+    legacy.exec(`CREATE TABLE runtime_reports (
+      host TEXT PRIMARY KEY,
+      working_codex INTEGER NOT NULL DEFAULT 0,
+      working_claude INTEGER NOT NULL DEFAULT 0,
+      idle_codex INTEGER NOT NULL DEFAULT 0,
+      idle_claude INTEGER NOT NULL DEFAULT 0,
+      reported_at TEXT NOT NULL DEFAULT (datetime('now'))
+    ); INSERT INTO runtime_reports (host, working_codex, working_claude)
+      VALUES ('cortex', 1, 2);`);
+    legacy.close();
+
+    try {
+      const migrated = new AgentboardDB(databasePath);
+      expect(migrated.getRuntimeReports(0)[0]).toMatchObject({
+        workingOpenCode: 0,
+        idleOpenCode: 0,
+      });
+      migrated.close();
+
+      const reopened = new AgentboardDB(databasePath);
+      reopened.upsertRuntimeReport(payload);
+      expect(reopened.getRuntimeReports(0)[0]).toMatchObject(payload);
+      reopened.close();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it('stores, updates, aggregates, and publishes reports', async () => {
     const iterator = pubsub.subscribe(EVENTS.RUNTIME_STATUS_CHANGED);
     const result = service.reportRuntime(payload);
-    expect(result).toMatchObject({ working: 3, idle: 7, codexWorking: 2, claudeWorking: 1 });
+    expect(result).toMatchObject({
+      working: 3, idle: 7, codexWorking: 2, claudeWorking: 1, openCodeWorking: 0,
+    });
     expect(result.hosts[0]).toMatchObject(payload);
     expect((await iterator.next()).value).toEqual({ runtimeStatusChanged: result });
     await iterator.return?.();
@@ -45,6 +85,13 @@ describe('runtime activity reporting', () => {
     service.reportRuntime({ ...payload, workingCodex: 0 });
     expect(db.getRuntimeReports(0)[0]?.workingCodex).toBe(0);
     expect(db.getRuntimeReports()).toHaveLength(1);
+
+    const withOpenCode = service.reportRuntime({
+      ...payload,
+      workingOpenCode: 4,
+      idleOpenCode: 2,
+    });
+    expect(withOpenCode).toMatchObject({ working: 7, idle: 9, openCodeWorking: 4 });
   });
 
   it('tracks one persistent non-stop working streak across count changes', () => {
@@ -86,8 +133,10 @@ describe('runtime activity reporting', () => {
     [{ ...payload, host: 'bad host' }, 'host'],
     [{ ...payload, workingCodex: -1 }, 'workingCodex'],
     [{ ...payload, workingClaude: 1.5 }, 'workingClaude'],
+    [{ ...payload, workingOpenCode: -1 }, 'workingOpenCode'],
     [{ ...payload, idleCodex: 1001 }, 'idleCodex'],
     [{ ...payload, idleClaude: undefined }, 'idleClaude'],
+    [{ ...payload, idleOpenCode: 1.5 }, 'idleOpenCode'],
   ])('rejects invalid reports', (body, field) => {
     expect(() => service.reportRuntime(body)).toThrow(field);
   });

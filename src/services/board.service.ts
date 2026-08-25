@@ -83,7 +83,10 @@ export class BoardService {
     if (typeof report.host !== 'string' || !RUNTIME_HOST_RE.test(report.host)) {
       throw new ValidationError('Invalid "host" field');
     }
-    const fields = ['workingCodex', 'workingClaude', 'idleCodex', 'idleClaude'] as const;
+    const fields = [
+      'workingCodex', 'workingClaude', 'workingOpenCode',
+      'idleCodex', 'idleClaude', 'idleOpenCode',
+    ] as const;
     for (const field of fields) {
       const value = report[field];
       if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 1000) {
@@ -106,13 +109,20 @@ export class BoardService {
 
   getRuntimeStatus(): RuntimeStatus {
     const hosts = this.db.getRuntimeReports();
-    const working = hosts.reduce((sum, host) => sum + host.workingCodex + host.workingClaude, 0);
+    const working = hosts.reduce(
+      (sum, host) => sum + host.workingCodex + host.workingClaude + host.workingOpenCode,
+      0,
+    );
     const workingSince = working > 0 ? this.db.getSetting('runtime_work_started_at') ?? null : null;
     return {
       working,
-      idle: hosts.reduce((sum, host) => sum + host.idleCodex + host.idleClaude, 0),
+      idle: hosts.reduce(
+        (sum, host) => sum + host.idleCodex + host.idleClaude + host.idleOpenCode,
+        0,
+      ),
       codexWorking: hosts.reduce((sum, host) => sum + host.workingCodex, 0),
       claudeWorking: hosts.reduce((sum, host) => sum + host.workingClaude, 0),
+      openCodeWorking: hosts.reduce((sum, host) => sum + host.workingOpenCode, 0),
       workingSince,
       workingForSeconds: workingSince === null
         ? 0

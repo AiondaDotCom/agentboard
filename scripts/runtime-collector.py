@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Low-overhead Codex/Claude activity collector for Agentboard."""
+"""Low-overhead Codex, Claude Code, and OpenCode activity collector."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import sqlite3
 import subprocess
 import sys
 import time
@@ -22,15 +23,15 @@ _file_cache: dict[Path, tuple[float, list[Path]]] = {}
 _state_cache: dict[Path, tuple[int, bool]] = {}
 
 
-def process_counts() -> tuple[int, int]:
-    """Return running Codex/Claude CLI process counts."""
+def process_counts() -> tuple[int, int, int]:
+    """Return running Codex/Claude Code/OpenCode CLI process counts."""
     result = subprocess.run(
         ["ps", "-axo", "command="],
         check=False,
         capture_output=True,
         text=True,
     )
-    running = {"codex": 0, "claude": 0}
+    running = {"codex": 0, "claude": 0, "opencode": 0}
     for line in result.stdout.splitlines():
         parts = line.strip().split(None, 1)
         if not parts:
@@ -40,7 +41,7 @@ def process_counts() -> tuple[int, int]:
         if kind is None:
             continue
         running[kind] += 1
-    return running["codex"], running["claude"]
+    return running["codex"], running["claude"], running["opencode"]
 
 
 def recent_jsonl(root: Path) -> list[Path]:
@@ -129,19 +130,65 @@ def claude_working() -> int:
     return sum(cached_state(path, "claude") for path in recent_jsonl(Path.home() / ".claude" / "projects"))
 
 
+def opencode_working() -> int:
+    """Count active OpenCode sessions, including child/sub-agent sessions."""
+    database = Path.home() / ".local" / "share" / "opencode" / "opencode.db"
+    if not database.is_file():
+        return 0
+    cutoff_ms = int((time.time() - RECENT_SESSION_SECONDS) * 1000)
+    try:
+        connection = sqlite3.connect(
+            f"file:{database}?mode=ro",
+            uri=True,
+            timeout=1,
+        )
+        try:
+            row = connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM session AS session
+                JOIN message AS message
+                  ON message.id = (
+                    SELECT latest.id
+                    FROM message AS latest
+                    WHERE latest.session_id = session.id
+                    ORDER BY latest.time_created DESC, latest.id DESC
+                    LIMIT 1
+                  )
+                WHERE session.time_updated >= ?
+                  AND (
+                    json_extract(message.data, '$.role') = 'user'
+                    OR (
+                      json_extract(message.data, '$.role') = 'assistant'
+                      AND json_extract(message.data, '$.time.completed') IS NULL
+                    )
+                  )
+                """,
+                (cutoff_ms,),
+            ).fetchone()
+            return int(row[0]) if row is not None else 0
+        finally:
+            connection.close()
+    except (OSError, sqlite3.Error, ValueError):
+        return 0
+
+
 def status() -> dict[str, int | str]:
-    codex, claude = process_counts()
-    # Codex and Claude subagents share their parent CLI process. Count active
-    # session turns instead of capping them at the number of OS processes.
+    codex, claude, opencode = process_counts()
+    # Subagents can share their parent CLI process. Count active session turns
+    # instead of capping them at the number of OS processes.
     # The process count remains a liveness guard against stale unfinished logs.
     working_codex = codex_working() if codex > 0 else 0
     working_claude = claude_working() if claude > 0 else 0
+    working_opencode = opencode_working() if opencode > 0 else 0
     return {
         "host": socket.gethostname().split(".")[0],
         "workingCodex": working_codex,
         "workingClaude": working_claude,
+        "workingOpenCode": working_opencode,
         "idleCodex": max(0, codex - working_codex),
         "idleClaude": max(0, claude - working_claude),
+        "idleOpenCode": max(0, opencode - working_opencode),
     }
 
 

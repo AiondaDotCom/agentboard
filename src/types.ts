@@ -14,8 +14,10 @@ export interface RuntimeReport {
   host: string;
   workingCodex: number;
   workingClaude: number;
+  workingOpenCode: number;
   idleCodex: number;
   idleClaude: number;
+  idleOpenCode: number;
   reportedAt: string;
 }
 
@@ -24,6 +26,7 @@ export interface RuntimeStatus {
   idle: number;
   codexWorking: number;
   claudeWorking: number;
+  openCodeWorking: number;
   workingSince: string | null;
   workingForSeconds: number;
   hosts: RuntimeReport[];

@@ -70,7 +70,7 @@ open http://localhost:3000
 
 ## Live AI runtime status
 
-The header shows how many Codex and Claude instances are actively processing a
+The header shows how many Codex, Claude Code, and OpenCode instances are actively processing a
 turn. Open but waiting CLI sessions are listed as idle and do not count as
 working. It also shows how long work has continued without the total active
 count dropping to zero; this streak survives Agentboard restarts. Runtime
@@ -88,7 +88,7 @@ AGENTBOARD_RUNTIME_API_KEY='runtime-...' \
   ./scripts/run-runtime-collector.sh
 ```
 
-The included collector checks process and Codex/Claude session state every ten
+The included collector checks process and Codex/Claude/OpenCode session state every ten
 seconds, reports state changes immediately, and sends a safety heartbeat once a
 minute. `scripts/com.aionda.agentboard-runtime.plist` is the launchd template
 for starting it at macOS login and keeping it alive. On the monitored Mac, run:

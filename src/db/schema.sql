@@ -106,8 +106,10 @@ CREATE TABLE IF NOT EXISTS runtime_reports (
   host TEXT PRIMARY KEY,
   working_codex INTEGER NOT NULL DEFAULT 0,
   working_claude INTEGER NOT NULL DEFAULT 0,
+  working_opencode INTEGER NOT NULL DEFAULT 0,
   idle_codex INTEGER NOT NULL DEFAULT 0,
   idle_claude INTEGER NOT NULL DEFAULT 0,
+  idle_opencode INTEGER NOT NULL DEFAULT 0,
   reported_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

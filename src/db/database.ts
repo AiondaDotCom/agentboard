@@ -114,8 +114,10 @@ interface RuntimeReportRow {
   host: string;
   working_codex: number;
   working_claude: number;
+  working_opencode: number;
   idle_codex: number;
   idle_claude: number;
+  idle_opencode: number;
   reported_at: string;
 }
 
@@ -179,6 +181,19 @@ export class AgentboardDB {
         this.db
           .prepare('UPDATE projects SET columns = ? WHERE columns IS NULL')
           .run(JSON.stringify(LEGACY_COLUMNS));
+      }
+    }
+
+    const hasRuntimeReports = this.db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'runtime_reports'")
+      .get();
+    if (hasRuntimeReports) {
+      const columns = this.db.prepare('PRAGMA table_info(runtime_reports)').all() as { name: string }[];
+      if (!columns.some((c) => c.name === 'working_opencode')) {
+        this.db.exec('ALTER TABLE runtime_reports ADD COLUMN working_opencode INTEGER NOT NULL DEFAULT 0');
+      }
+      if (!columns.some((c) => c.name === 'idle_opencode')) {
+        this.db.exec('ALTER TABLE runtime_reports ADD COLUMN idle_opencode INTEGER NOT NULL DEFAULT 0');
       }
     }
   }
@@ -299,8 +314,10 @@ export class AgentboardDB {
       host: row.host,
       workingCodex: row.working_codex,
       workingClaude: row.working_claude,
+      workingOpenCode: row.working_opencode,
       idleCodex: row.idle_codex,
       idleClaude: row.idle_claude,
+      idleOpenCode: row.idle_opencode,
       reportedAt: row.reported_at,
     };
   }
@@ -354,16 +371,18 @@ export class AgentboardDB {
 
   upsertRuntimeReport(report: Omit<RuntimeReport, 'reportedAt'>): RuntimeReport {
     this.db.prepare(`INSERT INTO runtime_reports
-      (host, working_codex, working_claude, idle_codex, idle_claude, reported_at)
-      VALUES (?, ?, ?, ?, ?, datetime('now'))
+      (host, working_codex, working_claude, working_opencode, idle_codex, idle_claude, idle_opencode, reported_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
       ON CONFLICT(host) DO UPDATE SET
         working_codex = excluded.working_codex,
         working_claude = excluded.working_claude,
+        working_opencode = excluded.working_opencode,
         idle_codex = excluded.idle_codex,
         idle_claude = excluded.idle_claude,
+        idle_opencode = excluded.idle_opencode,
         reported_at = excluded.reported_at`).run(
-      report.host, report.workingCodex, report.workingClaude,
-      report.idleCodex, report.idleClaude,
+      report.host, report.workingCodex, report.workingClaude, report.workingOpenCode,
+      report.idleCodex, report.idleClaude, report.idleOpenCode,
     );
     const row = this.db.prepare('SELECT * FROM runtime_reports WHERE host = ?')
       .get(report.host) as RuntimeReportRow;

@@ -258,7 +258,7 @@ function renderRuntimeStatus(status) {
   const text = document.getElementById('runtime-status-text');
   el.classList.remove('runtime-working', 'runtime-idle', 'runtime-offline');
   const hostDetails = status.hosts.map(host =>
-    `${host.host}: ${host.workingCodex} Codex + ${host.workingClaude} Claude working, ${host.idleCodex + host.idleClaude} idle`
+    `${host.host}: ${host.workingCodex} Codex + ${host.workingClaude} Claude + ${host.workingOpenCode} OpenCode working, ${host.idleCodex + host.idleClaude + host.idleOpenCode} idle`
   ).join('\n');
   if (status.working > 0) {
     el.classList.add('runtime-working');
@@ -272,7 +272,7 @@ function renderRuntimeStatus(status) {
     text.textContent = '0 AIs working';
   }
   el.title = status.hosts.length
-    ? `${status.codexWorking} Codex, ${status.claudeWorking} Claude working; ${status.idle} idle${status.workingSince ? `\nWorking non-stop since ${new Date(status.workingSince).toLocaleString()}` : ''}\n${hostDetails}`
+    ? `${status.codexWorking} Codex, ${status.claudeWorking} Claude, ${status.openCodeWorking} OpenCode working; ${status.idle} idle${status.workingSince ? `\nWorking non-stop since ${new Date(status.workingSince).toLocaleString()}` : ''}\n${hostDetails}`
     : 'No current runtime heartbeat from cortex';
 }
 
@@ -1314,7 +1314,7 @@ function connectWebSocket(projectId) {
       subscribeGlobal(socket, '6', 'agentChanged', 'id name createdAt');
       subscribeGlobal(socket, '7', 'projectChanged', 'id name description columns { id title } createdAt');
       subscribeGlobal(socket, '9', 'auditAdded', 'id agentId method path statusCode requestBody timestamp');
-      subscribeGlobal(socket, '11', 'runtimeStatusChanged', 'working idle codexWorking claudeWorking workingSince workingForSeconds hosts { host workingCodex workingClaude idleCodex idleClaude reportedAt }');
+      subscribeGlobal(socket, '11', 'runtimeStatusChanged', 'working idle codexWorking claudeWorking openCodeWorking workingSince workingForSeconds hosts { host workingCodex workingClaude workingOpenCode idleCodex idleClaude idleOpenCode reportedAt }');
       // Project-specific subscriptions only when viewing a project
       if (projectId) {
         subscribe(socket, '1', 'ticketCreated', projectId);
