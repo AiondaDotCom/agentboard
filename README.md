@@ -68,6 +68,34 @@ npm install
 open http://localhost:3000
 ```
 
+## Live AI runtime status
+
+The header shows how many Codex and Claude instances are actively processing a
+turn. Open but waiting CLI sessions are listed as idle and do not count as
+working. Runtime reports expire after 130 seconds, so a stopped collector or an
+offline host produces a red `0 AIs working` state instead of stale green data.
+
+Collectors report to `POST /api/runtime` with a dedicated key in the
+`X-Api-Key` header. Set the same secret on the server and collector:
+
+```bash
+RUNTIME_API_KEY='runtime-...' ./run.sh
+
+AGENTBOARD_URL='http://agentboard-host:3000' \
+AGENTBOARD_RUNTIME_API_KEY='runtime-...' \
+  ./scripts/run-runtime-collector.sh
+```
+
+The included collector checks process and Codex/Claude session state every ten
+seconds, reports state changes immediately, and sends a safety heartbeat once a
+minute. `scripts/com.aionda.agentboard-runtime.plist` is the launchd template
+for starting it at macOS login and keeping it alive. On the monitored Mac, run:
+
+```bash
+./scripts/install-runtime-collector-macos.sh \
+  'http://agentboard-host:3000' 'runtime-your-secret'
+```
+
 The admin API key is printed on startup and persisted in SQLite.
 
 ## MCP Server

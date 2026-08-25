@@ -32,6 +32,7 @@ HTTP Server (src/server.ts, port 3000)
 - Demo-Script ist TypeScript (`demo.ts`), nicht Bash (macOS Bash 3.2 Probleme)
 - Demo liest Admin-Key direkt aus SQLite
 - Frontend nutzt GraphQL WebSocket Subscriptions – kein Polling fuer Echtzeit
+- **Live Runtime Status**: `POST /api/runtime` nimmt mit einem dedizierten `X-Api-Key` Heartbeats von Host-Collectors an. Der Header zeigt wirklich laufende Codex-/Claude-Turns gruen, offene idle Prozesse nicht als arbeitend; nach 130 Sekunden ohne Heartbeat wird der Host als offline behandelt. Statuswechsel kommen per GraphQL-Subscription, ein 15s-Poll stellt TTL-/Reconnect-Updates sicher. Der macOS-Collector unter `scripts/` scannt alle 10s, sendet bei Aenderung bzw. alle 60s und laeuft per LaunchAgent beim Login.
 - Kommentare: neueste oben (reversed)
 - Ticket-Revisions sind revisionssicher (tamper-proof audit trail)
 - **Ticket-Gruppen**: Tickets koennen per `group` gebuendelt werden (optional bei create/update). Claim-Regel im BoardService: Weist sich ein Agent ein Ticket einer Gruppe zu, gehoert ihm die ganze Gruppe – andere Agents bekommen `ConflictError` (HTTP 409). Der Claim ist aus `assignee_id` abgeleitet (kein Lock): Unassign oder alle Tickets in der letzten Spalte geben die Gruppe frei. Frontend clustert Gruppen pro Spalte mit Farbcodierung (Hue aus Gruppenname) und Claim-Badge.

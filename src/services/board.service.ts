@@ -29,10 +29,13 @@ import type {
   Priority,
   WorkType,
   WorkTypeFilter,
+  RuntimeReport,
+  RuntimeStatus,
 } from '../types.js';
 import { NotFoundError, ValidationError, DuplicateError, ConflictError } from './errors.js';
 
 const MAX_COLUMNS = 20;
+const RUNTIME_HOST_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 export class BoardService {
   constructor(private db: AgentboardDB) {}
@@ -69,6 +72,39 @@ export class BoardService {
     const newKey = `admin-${uuidv4()}`;
     this.db.setSetting('admin_api_key', newKey);
     return newKey;
+  }
+
+  getOrCreateRuntimeApiKey(): string {
+    return this.db.getOrCreateRuntimeApiKey();
+  }
+
+  reportRuntime(input: Partial<Omit<RuntimeReport, 'reportedAt'>> | null | undefined): RuntimeStatus {
+    const report = input ?? {};
+    if (typeof report.host !== 'string' || !RUNTIME_HOST_RE.test(report.host)) {
+      throw new ValidationError('Invalid "host" field');
+    }
+    const fields = ['workingCodex', 'workingClaude', 'idleCodex', 'idleClaude'] as const;
+    for (const field of fields) {
+      const value = report[field];
+      if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 1000) {
+        throw new ValidationError(`Invalid "${field}" field`);
+      }
+    }
+    this.db.upsertRuntimeReport(report as Omit<RuntimeReport, 'reportedAt'>);
+    const status = this.getRuntimeStatus();
+    pubsub.publish(EVENTS.RUNTIME_STATUS_CHANGED, { runtimeStatusChanged: status });
+    return status;
+  }
+
+  getRuntimeStatus(): RuntimeStatus {
+    const hosts = this.db.getRuntimeReports();
+    return {
+      working: hosts.reduce((sum, host) => sum + host.workingCodex + host.workingClaude, 0),
+      idle: hosts.reduce((sum, host) => sum + host.idleCodex + host.idleClaude, 0),
+      codexWorking: hosts.reduce((sum, host) => sum + host.workingCodex, 0),
+      claudeWorking: hosts.reduce((sum, host) => sum + host.workingClaude, 0),
+      hosts,
+    };
   }
 
   // -------------------------------------------------------------------------

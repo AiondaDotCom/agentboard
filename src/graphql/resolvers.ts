@@ -83,6 +83,10 @@ export function createResolvers(db: AgentboardDB): Record<string, unknown> {
         subscribe: (): AsyncIterableIterator<Record<string, unknown>> =>
           pubsub.asyncIterableIterator(EVENTS.AUDIT_ADDED),
       },
+      runtimeStatusChanged: {
+        subscribe: (): AsyncIterableIterator<Record<string, unknown>> =>
+          pubsub.asyncIterableIterator(EVENTS.RUNTIME_STATUS_CHANGED),
+      },
     },
   };
 }

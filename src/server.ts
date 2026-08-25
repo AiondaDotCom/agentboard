@@ -24,6 +24,7 @@ import { createProjectRoutes } from './api/routes/projects.js';
 import { createTicketRoutes, createHumanTicketRoutes } from './api/routes/tickets.js';
 import { createAuditRoutes } from './api/routes/audit.js';
 import { createBatchRoutes } from './api/routes/batch.js';
+import { createRuntimeRoutes } from './api/routes/runtime.js';
 import { createAuditMiddleware } from './api/middleware/audit.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '3000', 10);
@@ -59,6 +60,8 @@ if (envKey) {
   db.setSetting('admin_api_key', envKey);
 }
 const ADMIN_API_KEY = service.getOrCreateAdminKey();
+const envRuntimeKey = process.env['RUNTIME_API_KEY'];
+if (envRuntimeKey) db.setSetting('runtime_api_key', envRuntimeKey);
 
 // ---------------------------------------------------------------------------
 // Express
@@ -95,6 +98,10 @@ app.get('/api/auth/status', (req, res): void => {
   const token = cookies['agentboard_session'];
   res.json({ authenticated: !!(token && db.hasSession(token)) });
 });
+
+// High-frequency telemetry is deliberately outside the audit middleware so
+// browser status polls do not grow the audit log every 15 seconds.
+app.use('/api/runtime', createRuntimeRoutes(service));
 
 // Audit middleware – logs every API call (infrastructure, stays at HTTP layer)
 app.use('/api', createAuditMiddleware(db));

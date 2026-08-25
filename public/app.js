@@ -7,6 +7,7 @@ let currentProjectId = null;
 let ws = null;
 let agents = {};
 let activities = [];
+let runtimePollTimer = null;
 
 // Column config of the currently opened project: [{id, title}, ...]
 // First column = inbox for new tickets, last column = finished/done.
@@ -234,6 +235,33 @@ async function loadAgents() {
   agents = {};
   agentList.forEach(a => { agents[a.id] = a; });
   document.getElementById('agent-count').textContent = `${agentList.length} agent${agentList.length !== 1 ? 's' : ''}`;
+}
+
+async function loadRuntimeStatus() {
+  const el = document.getElementById('runtime-status');
+  const text = document.getElementById('runtime-status-text');
+  try {
+    const status = await fetchJSON('/api/runtime');
+    el.classList.remove('runtime-working', 'runtime-idle', 'runtime-offline');
+    const hostDetails = status.hosts.map(host =>
+      `${host.host}: ${host.workingCodex} Codex + ${host.workingClaude} Claude working, ${host.idleCodex + host.idleClaude} idle`
+    ).join('\n');
+    if (status.working > 0) {
+      el.classList.add('runtime-working');
+      text.textContent = `${status.working} AI${status.working === 1 ? '' : 's'} working`;
+    } else {
+      el.classList.add(status.hosts.length ? 'runtime-idle' : 'runtime-offline');
+      text.textContent = '0 AIs working';
+    }
+    el.title = status.hosts.length
+      ? `${status.codexWorking} Codex, ${status.claudeWorking} Claude working; ${status.idle} idle\n${hostDetails}`
+      : 'No current runtime heartbeat from cortex';
+  } catch {
+    el.classList.remove('runtime-working', 'runtime-idle');
+    el.classList.add('runtime-offline');
+    text.textContent = 'AI status offline';
+    el.title = 'Runtime status API is unavailable';
+  }
 }
 
 async function loadBoard(projectId) {
@@ -1259,6 +1287,7 @@ function connectWebSocket(projectId) {
       subscribeGlobal(socket, '6', 'agentChanged', 'id name createdAt');
       subscribeGlobal(socket, '7', 'projectChanged', 'id name description columns { id title } createdAt');
       subscribeGlobal(socket, '9', 'auditAdded', 'id agentId method path statusCode requestBody timestamp');
+      subscribeGlobal(socket, '11', 'runtimeStatusChanged', 'working idle codexWorking claudeWorking hosts { host workingCodex workingClaude idleCodex idleClaude reportedAt }');
       // Project-specific subscriptions only when viewing a project
       if (projectId) {
         subscribe(socket, '1', 'ticketCreated', projectId);
@@ -1358,6 +1387,11 @@ function handleSubscriptionEvent(subId, data) {
   // Audit event → prepend to audit log in realtime
   if (subId === '9') {
     if (data.auditAdded) prependAuditEntry(data.auditAdded);
+    return;
+  }
+
+  if (subId === '11') {
+    loadRuntimeStatus();
     return;
   }
 
@@ -1512,12 +1546,13 @@ window.showOverview = showOverview;
 
 async function init() {
   try {
-    await loadAgents();
+    await Promise.all([loadAgents(), loadRuntimeStatus()]);
     await loadProjectOverview(); // may auto-select if single project
   } catch (e) {
     console.error('[agentboard] Init failed:', e);
   }
   hideLoading();
+  runtimePollTimer = setInterval(loadRuntimeStatus, 15000);
 
   // Start overview polling + WS if still on overview
   if (!currentProjectId) {

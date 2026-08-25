@@ -81,6 +81,23 @@ export const typeDefs = gql`
     timestamp: String!
   }
 
+  type RuntimeReport {
+    host: String!
+    workingCodex: Int!
+    workingClaude: Int!
+    idleCodex: Int!
+    idleClaude: Int!
+    reportedAt: String!
+  }
+
+  type RuntimeStatus {
+    working: Int!
+    idle: Int!
+    codexWorking: Int!
+    claudeWorking: Int!
+    hosts: [RuntimeReport!]!
+  }
+
   type Query {
     projects: [Project!]!
     project(id: ID!): Project
@@ -98,5 +115,6 @@ export const typeDefs = gql`
     projectChanged: Project!
     ticketViewed(projectId: ID!): TicketViewEvent!
     auditAdded: AuditEntry!
+    runtimeStatusChanged: RuntimeStatus!
   }
 `;

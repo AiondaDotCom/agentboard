@@ -9,6 +9,24 @@
  */
 export type Column = string;
 
+/** Runtime activity reported by a lightweight collector on an agent host. */
+export interface RuntimeReport {
+  host: string;
+  workingCodex: number;
+  workingClaude: number;
+  idleCodex: number;
+  idleClaude: number;
+  reportedAt: string;
+}
+
+export interface RuntimeStatus {
+  working: number;
+  idle: number;
+  codexWorking: number;
+  claudeWorking: number;
+  hosts: RuntimeReport[];
+}
+
 /** A single board column as configured on a project. */
 export interface ColumnDef {
   /** Stable slug used in ticket.column (e.g. 'in_progress'). */

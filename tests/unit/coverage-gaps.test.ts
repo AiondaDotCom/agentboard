@@ -599,6 +599,7 @@ describe('GraphQL resolvers – subscriptions and field resolvers', () => {
       ['agentChanged', EVENTS.AGENT_CHANGED],
       ['projectChanged', EVENTS.PROJECT_CHANGED],
       ['auditAdded', EVENTS.AUDIT_ADDED],
+      ['runtimeStatusChanged', EVENTS.RUNTIME_STATUS_CHANGED],
     ] as const) {
       const it = resolvers.Subscription[field].subscribe();
       const pending = it.next();

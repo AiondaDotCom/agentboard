@@ -24,6 +24,7 @@ import type {
   PaginatedResult,
   Priority,
   WorkType,
+  RuntimeReport,
 } from '../types.js';
 import { DEFAULT_COLUMNS, LEGACY_COLUMNS, DEFAULT_PRIORITY } from '../types.js';
 
@@ -107,6 +108,15 @@ interface RevisionRow {
   old_value: string;
   new_value: string;
   timestamp: string;
+}
+
+interface RuntimeReportRow {
+  host: string;
+  working_codex: number;
+  working_claude: number;
+  idle_codex: number;
+  idle_claude: number;
+  reported_at: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -284,6 +294,17 @@ export class AgentboardDB {
     };
   }
 
+  private mapRuntimeReportRow(row: RuntimeReportRow): RuntimeReport {
+    return {
+      host: row.host,
+      workingCodex: row.working_codex,
+      workingClaude: row.working_claude,
+      idleCodex: row.idle_codex,
+      idleClaude: row.idle_claude,
+      reportedAt: row.reported_at,
+    };
+  }
+
   // -----------------------------------------------------------------------
   // Settings (key-value store for persistent config)
   // -----------------------------------------------------------------------
@@ -313,6 +334,44 @@ export class AgentboardDB {
     const key = `admin-${uuidv4()}`;
     this.setSetting('admin_api_key', key);
     return key;
+  }
+
+  getOrCreateRuntimeApiKey(): string {
+    const existing = this.getSetting('runtime_api_key');
+    if (existing !== undefined) return existing;
+    const key = `runtime-${uuidv4()}`;
+    this.setSetting('runtime_api_key', key);
+    return key;
+  }
+
+  // -----------------------------------------------------------------------
+  // Runtime activity heartbeats
+  // -----------------------------------------------------------------------
+
+  upsertRuntimeReport(report: Omit<RuntimeReport, 'reportedAt'>): RuntimeReport {
+    this.db.prepare(`INSERT INTO runtime_reports
+      (host, working_codex, working_claude, idle_codex, idle_claude, reported_at)
+      VALUES (?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(host) DO UPDATE SET
+        working_codex = excluded.working_codex,
+        working_claude = excluded.working_claude,
+        idle_codex = excluded.idle_codex,
+        idle_claude = excluded.idle_claude,
+        reported_at = excluded.reported_at`).run(
+      report.host, report.workingCodex, report.workingClaude,
+      report.idleCodex, report.idleClaude,
+    );
+    const row = this.db.prepare('SELECT * FROM runtime_reports WHERE host = ?')
+      .get(report.host) as RuntimeReportRow;
+    return this.mapRuntimeReportRow(row);
+  }
+
+  getRuntimeReports(activeWithinSeconds = 130): RuntimeReport[] {
+    const rows = (activeWithinSeconds > 0
+      ? this.db.prepare("SELECT * FROM runtime_reports WHERE reported_at >= datetime('now', ?) ORDER BY host ASC")
+        .all(`-${String(activeWithinSeconds)} seconds`)
+      : this.db.prepare('SELECT * FROM runtime_reports ORDER BY host ASC').all()) as RuntimeReportRow[];
+    return rows.map((row) => this.mapRuntimeReportRow(row));
   }
 
   // -----------------------------------------------------------------------
