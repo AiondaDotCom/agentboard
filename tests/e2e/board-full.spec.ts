@@ -579,6 +579,12 @@ test.describe('Agentboard E2E – Comprehensive Feature Test', () => {
     await backLabel.click();
     await page.waitForSelector('.overview-table');
     await expect(page.locator('#project-overview')).toBeVisible();
+
+    // The Aionda logo is also a home button for the project overview
+    await page.locator('.overview-project-name', { hasText: projectName }).click();
+    await expect(page.locator('#board')).toBeVisible();
+    await page.locator('.logo-link').click();
+    await expect(page.locator('#project-overview')).toBeVisible();
   });
 
   // -------------------------------------------------------------------------
