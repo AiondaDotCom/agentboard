@@ -131,8 +131,11 @@ def claude_working() -> int:
 
 def status() -> dict[str, int | str]:
     codex, claude = process_counts()
-    working_codex = min(codex, codex_working())
-    working_claude = min(claude, claude_working())
+    # Codex and Claude subagents share their parent CLI process. Count active
+    # session turns instead of capping them at the number of OS processes.
+    # The process count remains a liveness guard against stale unfinished logs.
+    working_codex = codex_working() if codex > 0 else 0
+    working_claude = claude_working() if claude > 0 else 0
     return {
         "host": socket.gethostname().split(".")[0],
         "workingCodex": working_codex,
