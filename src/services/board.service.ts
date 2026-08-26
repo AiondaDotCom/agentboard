@@ -353,6 +353,7 @@ export class BoardService {
     });
 
     this.audit(agentId ?? null, 'CREATE', `ticket '${ticket.title}'`, `in project ${projectId}`);
+    if (agentId !== undefined && agentId !== null) this.notifyTicketAccess(projectId, ticket.id, agentId, 'create');
     return ticket;
   }
 
@@ -360,7 +361,7 @@ export class BoardService {
     const ticket = this.db.getTicket(projectId, ticketId);
     if (!ticket) throw new NotFoundError('Ticket not found');
     if (viewerAgentId) {
-      this.notifyTicketView(projectId, ticket.id, viewerAgentId);
+      this.notifyTicketAccess(projectId, ticket.id, viewerAgentId, 'read');
       this.audit(viewerAgentId, 'READ', `ticket '${ticket.title}'`, `in project ${projectId}`);
       this.logAndPublishActivity(viewerAgentId, projectId, ticket.id, 'ticket_read', `Read ticket "${ticket.title}"`);
     }
@@ -377,6 +378,9 @@ export class BoardService {
     }
     const result = this.db.getTicketsByProject(projectId, options);
     if (actorId) {
+      for (const ticket of result.data) {
+        this.notifyTicketAccess(projectId, ticket.id, actorId, 'list');
+      }
       const project = this.db.getProject(projectId);
       const filters = [
         options?.column ? `column=${options.column}` : '',
@@ -486,6 +490,7 @@ export class BoardService {
     });
 
     this.audit(actorId ?? null, 'UPDATE', `ticket '${ticket.title}'`, JSON.stringify(cleanUpdates));
+    if (actorId !== undefined && actorId !== null) this.notifyTicketAccess(projectId, ticket.id, actorId, 'update');
     return ticket;
   }
 
@@ -514,11 +519,13 @@ export class BoardService {
     });
 
     this.audit(actorId ?? null, 'MOVE', `ticket '${ticket.title}'`, `→ ${column}`);
+    if (actorId !== undefined && actorId !== null) this.notifyTicketAccess(projectId, ticket.id, actorId, 'move');
     return ticket;
   }
 
   deleteTicket(projectId: string, ticketId: string, actorId?: string | null): void {
     const ticket = this.requireTicket(projectId, ticketId);
+    if (actorId !== undefined && actorId !== null) this.notifyTicketAccess(projectId, ticket.id, actorId, 'delete');
     this.db.deleteTicket(projectId, ticket.id);
     pubsub.publish(EVENTS.TICKET_DELETED, {
       ticketDeleted: ticket,
@@ -566,6 +573,7 @@ export class BoardService {
     });
 
     this.audit(actorId ?? null, 'ASSIGN', `ticket '${ticket.title}'`, `→ ${assignee.name}`);
+    if (actorId !== undefined && actorId !== null) this.notifyTicketAccess(projectId, ticket.id, actorId, 'assign');
     return ticket;
   }
 
@@ -590,6 +598,7 @@ export class BoardService {
     });
 
     this.audit(actorId ?? null, 'UNASSIGN', `ticket '${ticket.title}'`);
+    if (actorId !== undefined && actorId !== null) this.notifyTicketAccess(projectId, ticket.id, actorId, 'unassign');
     return ticket;
   }
 
@@ -669,13 +678,14 @@ export class BoardService {
     });
 
     this.audit(agentId, 'COMMENT', `ticket '${resolved.id}'`, body.trim());
+    this.notifyTicketAccess(projectId, resolved.id, agentId, 'comment');
     return comment;
   }
 
   getCommentsByTicket(projectId: string, ticketId: string, viewerAgentId?: string | null): Comment[] {
     const resolved = this.requireTicket(projectId, ticketId);
     if (viewerAgentId) {
-      this.notifyTicketView(projectId, resolved.id, viewerAgentId);
+      this.notifyTicketAccess(projectId, resolved.id, viewerAgentId, 'read');
       this.audit(viewerAgentId, 'READ', `comments on ticket '${resolved.id}'`);
       this.logAndPublishActivity(viewerAgentId, projectId, resolved.id, 'comments_read', 'Read comments');
     }
@@ -689,7 +699,7 @@ export class BoardService {
   getRevisionsByTicket(projectId: string, ticketId: string, viewerAgentId?: string | null): TicketRevision[] {
     const resolved = this.requireTicket(projectId, ticketId);
     if (viewerAgentId) {
-      this.notifyTicketView(projectId, resolved.id, viewerAgentId);
+      this.notifyTicketAccess(projectId, resolved.id, viewerAgentId, 'read');
       this.audit(viewerAgentId, 'READ', `history of ticket '${resolved.id}'`);
       this.logAndPublishActivity(viewerAgentId, projectId, resolved.id, 'history_read', 'Read ticket history');
     }
@@ -871,16 +881,28 @@ export class BoardService {
   }
 
   // -------------------------------------------------------------------------
-  // View notifications (fire-and-forget, for frontend "agent is reading" indicator)
+  // Ticket access notifications (fire-and-forget, for the frontend pulse)
   // -------------------------------------------------------------------------
 
-  notifyTicketView(projectId: string, ticketId: string, agentId: string): void {
+  notifyTicketAccess(projectId: string, ticketId: string, agentId: string, action: string): void {
     const agent = this.db.getAgentById(agentId);
     if (!agent) return;
-    pubsub.publish(EVENTS.TICKET_VIEWED, {
-      ticketViewed: { ticketId, projectId, agentId, agentName: agent.name },
+    pubsub.publish(EVENTS.TICKET_ACCESSED, {
+      ticketAccessed: { ticketId, projectId, agentId, agentName: agent.name, action },
       projectId,
     });
+
+    // Keep the original read-only event working for existing GraphQL clients.
+    if (action === 'read') {
+      pubsub.publish(EVENTS.TICKET_VIEWED, {
+        ticketViewed: { ticketId, projectId, agentId, agentName: agent.name },
+        projectId,
+      });
+    }
+  }
+
+  notifyTicketView(projectId: string, ticketId: string, agentId: string): void {
+    this.notifyTicketAccess(projectId, ticketId, agentId, 'read');
   }
 
   // -------------------------------------------------------------------------

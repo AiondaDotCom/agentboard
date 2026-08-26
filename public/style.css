@@ -397,6 +397,7 @@ select:focus {
 
 /* Tickets */
 .ticket-card {
+  position: relative;
   background: rgba(15, 18, 25, 0.6);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
@@ -1507,33 +1508,49 @@ select:focus {
   }
 }
 
-/* Agent viewing indicator */
-.ticket-card.being-viewed {
-  border-color: rgba(168, 85, 247, 0.5);
-  animation: viewingPulse 2.5s ease-in-out infinite;
+/* Brief MCP agent access pulse */
+.ticket-card.ticket-accessed::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  z-index: 2;
+  pointer-events: none;
+  border: 2px solid rgba(168, 85, 247, 0.9);
+  border-radius: 10px;
+  animation: ticketAccessGlow 3.1s ease-out forwards;
 }
 
-.ticket-card.being-viewed:hover {
-  border-color: rgba(168, 85, 247, 0.7);
+.ticket-card.ticket-access-write::after {
+  border-color: rgba(53, 184, 201, 0.95);
+  animation-name: ticketWriteGlow;
 }
 
-@keyframes viewingPulse {
-  0%, 100% {
-    box-shadow: 0 0 16px rgba(168, 85, 247, 0.12), 0 0 4px rgba(168, 85, 247, 0.06);
-  }
-  50% {
-    box-shadow: 0 0 28px rgba(168, 85, 247, 0.25), 0 0 60px rgba(168, 85, 247, 0.08);
-  }
+@keyframes ticketAccessGlow {
+  0% { opacity: 0; box-shadow: 0 0 0 rgba(168, 85, 247, 0); transform: scale(0.98); }
+  18% { opacity: 1; box-shadow: 0 0 22px rgba(168, 85, 247, 0.55), 0 0 48px rgba(168, 85, 247, 0.2); transform: scale(1); }
+  100% { opacity: 0; box-shadow: 0 0 4px rgba(168, 85, 247, 0); transform: scale(1.01); }
 }
 
-.viewing-badges {
+@keyframes ticketWriteGlow {
+  0% { opacity: 0; box-shadow: 0 0 0 rgba(53, 184, 201, 0); transform: scale(0.98); }
+  18% { opacity: 1; box-shadow: 0 0 24px rgba(53, 184, 201, 0.62), 0 0 52px rgba(53, 184, 201, 0.22); transform: scale(1); }
+  100% { opacity: 0; box-shadow: 0 0 4px rgba(53, 184, 201, 0); transform: scale(1.01); }
+}
+
+.access-badges {
+  position: absolute;
+  top: -9px;
+  right: 8px;
+  z-index: 3;
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 4px;
-  margin-bottom: 8px;
+  max-width: calc(100% - 16px);
+  animation: accessBadgeFade 3.1s ease-out forwards;
 }
 
-.viewing-badge {
+.access-badge {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1547,24 +1564,48 @@ select:focus {
   letter-spacing: 0.3px;
 }
 
-.viewing-label {
+.access-badge-write {
+  color: var(--accent);
+  background: rgba(53, 184, 201, 0.12);
+  border-color: rgba(53, 184, 201, 0.3);
+}
+
+.access-label {
   opacity: 0.7;
   font-weight: 500;
   font-style: italic;
 }
 
-.viewing-dot {
+.access-dot {
   display: inline-block;
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--purple);
-  animation: dotPulse 1.5s ease-in-out infinite;
+  animation: dotPulse 1s ease-in-out infinite;
+}
+
+.access-badge-write .access-dot {
+  background: var(--accent);
 }
 
 @keyframes dotPulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.4; transform: scale(0.7); }
+}
+
+@keyframes accessBadgeFade {
+  0% { opacity: 0; transform: translateY(-3px); }
+  15%, 72% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticket-card.ticket-accessed::after,
+  .access-badges {
+    animation: none;
+    opacity: 1;
+  }
 }
 
 /* Scrollbar */

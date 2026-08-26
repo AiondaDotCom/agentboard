@@ -111,6 +111,7 @@ async function navigateToProject(page: Page, projectName: string): Promise<void>
 test.describe('Agentboard E2E – Comprehensive Feature Test', () => {
   let adminKey: string;
   let agent: { id: string; apiKey: string };
+  let agentName: string;
   let project: { id: string };
   let projectName: string;
   let consoleErrors: string[] = [];
@@ -135,7 +136,8 @@ test.describe('Agentboard E2E – Comprehensive Feature Test', () => {
 
     // Create isolated test data with unique names
     const uid = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    agent = await apiCreateAgent(url, adminKey, `e2e-bot-${uid}`);
+    agentName = `e2e-bot-${uid}`;
+    agent = await apiCreateAgent(url, adminKey, agentName);
     projectName = `E2E-${uid}`;
     project = await apiCreateProject(url, adminKey, projectName, 'Automated test');
   });
@@ -249,6 +251,28 @@ test.describe('Agentboard E2E – Comprehensive Feature Test', () => {
     // Column counts
     await expect(page.locator('[data-column="backlog"] .column-count')).toHaveText('1');
     await expect(page.locator('[data-column="done"] .column-count')).toHaveText('1');
+  });
+
+  test('Realtime access pulse shows which agent is reading a ticket', async ({ page, baseURL }) => {
+    const url = baseURL ?? 'http://localhost:3000';
+    const ticket = await apiCreateTicket(url, agent.apiKey, project.id, 'Agent Access Pulse');
+
+    await login(page, adminKey);
+    await navigateToProject(page, projectName);
+    const card = page.locator(`.ticket-card[data-ticket-id="${ticket.id}"]`);
+    await expect(card).toBeVisible();
+
+    // Give the project-scoped GraphQL subscriptions time to be acknowledged.
+    await page.waitForTimeout(150);
+    const response = await fetch(`${url}/api/projects/${project.id}/tickets/${ticket.id}`, {
+      headers: { 'X-Api-Key': agent.apiKey },
+    });
+    expect(response.ok).toBe(true);
+
+    await expect(card).toHaveClass(/ticket-accessed/);
+    await expect(card.locator('.access-badge')).toContainText(agentName);
+    await expect(card.locator('.access-badge')).toContainText('reading');
+    await expect(card).not.toHaveClass(/ticket-accessed/, { timeout: 5000 });
   });
 
   // -------------------------------------------------------------------------

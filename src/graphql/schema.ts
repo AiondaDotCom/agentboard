@@ -71,6 +71,14 @@ export const typeDefs = gql`
     agentName: String!
   }
 
+  type TicketAccessEvent {
+    ticketId: ID!
+    projectId: String!
+    agentId: String!
+    agentName: String!
+    action: String!
+  }
+
   type AuditEntry {
     id: ID!
     agentId: String
@@ -118,6 +126,7 @@ export const typeDefs = gql`
     commentAdded(projectId: ID!): Comment!
     agentChanged: Agent!
     projectChanged: Project!
+    ticketAccessed(projectId: ID!): TicketAccessEvent!
     ticketViewed(projectId: ID!): TicketViewEvent!
     auditAdded: AuditEntry!
     runtimeStatusChanged: RuntimeStatus!

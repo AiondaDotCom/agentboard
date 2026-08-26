@@ -3,6 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { AgentboardDB } from '../../src/db/database.js';
 import { BoardService } from '../../src/services/board.service.js';
 import { registerMcpTools, getOrCreateMcpAgent } from '../../src/mcp-server.js';
+import { EVENTS, pubsub } from '../../src/graphql/pubsub.js';
 
 // The MCP SDK server is exercised end-to-end via the running HTTP server;
 // here we register the tools against a stub to unit-test every handler.
@@ -122,6 +123,35 @@ describe('MCP tools', () => {
 
     const deleted = parse(await tools.get('delete_ticket')!({ project_id: projectId, ticket_id: a.id }));
     expect(deleted).toEqual({ deleted: true });
+  });
+
+  it('publishes ticket access events for list, read, and write operations', async () => {
+    const first = service.createTicket(projectId, 'First');
+    const second = service.createTicket(projectId, 'Second');
+    const accesses = pubsub.subscribe(EVENTS.TICKET_ACCESSED);
+
+    parse(await tools.get('list_tickets')!({ project_id: projectId }));
+    const listed = [await accesses.next(), await accesses.next()].map((event) =>
+      (event.value.ticketAccessed as { ticketId: string; agentName: string; action: string }),
+    );
+    expect(listed.map((event) => event.ticketId).sort()).toEqual([first.id, second.id].sort());
+    expect(listed.every((event) => event.agentName === 'mcp-bot' && event.action === 'list')).toBe(true);
+
+    parse(await tools.get('get_ticket')!({ project_id: projectId, ticket_id: first.id }));
+    expect((await accesses.next()).value.ticketAccessed).toMatchObject({
+      ticketId: first.id,
+      agentId,
+      action: 'read',
+    });
+
+    parse(await tools.get('update_ticket')!({ project_id: projectId, ticket_id: second.id, title: 'Changed' }));
+    expect((await accesses.next()).value.ticketAccessed).toMatchObject({
+      ticketId: second.id,
+      agentId,
+      action: 'update',
+    });
+
+    await accesses.return!();
   });
 
   it('assign_ticket assigns and unassigns', async () => {

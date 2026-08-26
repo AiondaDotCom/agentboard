@@ -130,5 +130,9 @@ describe('GraphQL Resolvers', () => {
     it('should have activityAdded subscription resolver', () => {
       expect(resolvers.Subscription.activityAdded.subscribe).toBeDefined();
     });
+
+    it('should have ticketAccessed subscription resolver', () => {
+      expect(resolvers.Subscription.ticketAccessed.subscribe).toBeDefined();
+    });
   });
 });

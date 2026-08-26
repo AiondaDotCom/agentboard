@@ -89,10 +89,10 @@ function workTypeBadge(ticket, cssClass) {
 }
 
 // ---------------------------------------------------------------------------
-// Agent viewing tracker – ticketId -> Map<agentId, {name, timer}>
+// Recent agent access tracker – ticketId -> Map<agentId, {name, action, timer}>
 // ---------------------------------------------------------------------------
-const ticketViewers = new Map();
-const VIEWING_DURATION = 60000; // 60 seconds
+const ticketAccesses = new Map();
+const ACCESS_EFFECT_DURATION = 3200;
 
 // ---------------------------------------------------------------------------
 // API helpers
@@ -569,8 +569,8 @@ function renderBoard(tickets) {
   prevTicketState = snapshotTicketPositions();
   prevGroupState = snapshotGroupPositions();
 
-  // 5. Reapply viewing badges (board re-render replaces all card DOM)
-  reapplyAllViewingBadges();
+  // 5. Reapply access pulses (board re-render replaces all card DOM)
+  reapplyAllAccessEffects();
 }
 
 function createTicketCard(ticket) {
@@ -1211,72 +1211,86 @@ window.copyApiKey = copyApiKey;
 window.copyId = copyId;
 
 // ---------------------------------------------------------------------------
-// Agent viewing indicator (shows which agents are reading a ticket)
+// Agent access indicator (briefly shows who is reading or changing a ticket)
 // ---------------------------------------------------------------------------
 
-function handleTicketViewed(data) {
-  const { ticketId, agentId, agentName } = data.ticketViewed;
-  console.log('[agentboard] ticketViewed event:', { ticketId: ticketId?.slice(0, 8), agentId, agentName });
+const ACCESS_LABELS = {
+  list: 'scanning',
+  read: 'reading',
+  create: 'creating',
+  update: 'editing',
+  move: 'moving',
+  assign: 'assigning',
+  unassign: 'unassigning',
+  comment: 'commenting',
+  delete: 'deleting',
+};
 
-  if (!ticketViewers.has(ticketId)) {
-    ticketViewers.set(ticketId, new Map());
+function handleTicketAccessed(data) {
+  const { ticketId, agentId, agentName, action } = data.ticketAccessed;
+  console.log('[agentboard] ticketAccessed event:', { ticketId: ticketId?.slice(0, 8), agentId, agentName, action });
+
+  if (!ticketAccesses.has(ticketId)) {
+    ticketAccesses.set(ticketId, new Map());
   }
-  const viewers = ticketViewers.get(ticketId);
+  const accesses = ticketAccesses.get(ticketId);
 
-  // Clear existing timer for this agent on this ticket
-  if (viewers.has(agentId)) {
-    clearTimeout(viewers.get(agentId).timer);
+  if (accesses.has(agentId)) {
+    clearTimeout(accesses.get(agentId).timer);
   }
 
-  // Auto-remove after VIEWING_DURATION
   const timer = setTimeout(() => {
-    viewers.delete(agentId);
-    if (viewers.size === 0) ticketViewers.delete(ticketId);
-    renderViewingBadge(ticketId);
-  }, VIEWING_DURATION);
+    accesses.delete(agentId);
+    if (accesses.size === 0) ticketAccesses.delete(ticketId);
+    renderAccessEffect(ticketId);
+  }, ACCESS_EFFECT_DURATION);
 
-  viewers.set(agentId, { name: agentName, timer });
-  renderViewingBadge(ticketId);
+  accesses.set(agentId, { name: agentName, action, timer });
+  renderAccessEffect(ticketId, true);
 }
 
-function renderViewingBadge(ticketId) {
+function renderAccessEffect(ticketId, restartAnimation = false) {
   const card = document.querySelector(`.ticket-card[data-ticket-id="${ticketId}"]`);
   if (!card) return;
 
-  // Remove existing badges
-  const existing = card.querySelector('.viewing-badges');
+  const existing = card.querySelector('.access-badges');
   if (existing) existing.remove();
-  card.classList.remove('being-viewed');
+  card.classList.remove('ticket-accessed', 'ticket-access-write');
 
-  const viewers = ticketViewers.get(ticketId);
-  if (!viewers || viewers.size === 0) return;
+  const accesses = ticketAccesses.get(ticketId);
+  if (!accesses || accesses.size === 0) return;
 
-  card.classList.add('being-viewed');
+  if ([...accesses.values()].some(({ action }) => !['list', 'read'].includes(action))) {
+    card.classList.add('ticket-access-write');
+  }
+  if (restartAnimation) void card.offsetWidth;
+  card.classList.add('ticket-accessed');
 
   const container = document.createElement('div');
-  container.className = 'viewing-badges';
+  container.className = 'access-badges';
 
-  viewers.forEach(({ name }) => {
+  accesses.forEach(({ name, action }) => {
     const badge = document.createElement('div');
-    badge.className = 'viewing-badge';
-    badge.innerHTML = `<span class="viewing-dot"></span> ${escapeHtml(name)} <span class="viewing-label">reading</span>`;
+    const isWrite = !['list', 'read'].includes(action);
+    badge.className = `access-badge${isWrite ? ' access-badge-write' : ''}`;
+    badge.innerHTML = `<span class="access-dot"></span> ${escapeHtml(name)} <span class="access-label">${ACCESS_LABELS[action] || 'accessing'}</span>`;
     container.appendChild(badge);
   });
 
   card.insertBefore(container, card.firstChild);
 }
 
-function reapplyAllViewingBadges() {
-  ticketViewers.forEach((_, ticketId) => {
-    renderViewingBadge(ticketId);
+function reapplyAllAccessEffects() {
+  ticketAccesses.forEach((_, ticketId) => {
+    renderAccessEffect(ticketId);
   });
 }
 
-function clearAllViewingTimers() {
-  ticketViewers.forEach(viewers => {
-    viewers.forEach(({ timer }) => clearTimeout(timer));
+function clearAllAccessTimers() {
+  ticketAccesses.forEach(accesses => {
+    accesses.forEach(({ timer }) => clearTimeout(timer));
   });
-  ticketViewers.clear();
+  ticketAccesses.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -1322,7 +1336,7 @@ function connectWebSocket(projectId) {
         subscribe(socket, '3', 'ticketMoved', projectId);
         subscribe(socket, '4', 'activityAdded', projectId);
         subscribe(socket, '5', 'ticketDeleted', projectId);
-        subscribe(socket, '8', 'ticketViewed', projectId);
+        subscribe(socket, '8', 'ticketAccessed', projectId);
         subscribe(socket, '10', 'commentAdded', projectId);
       }
     }
@@ -1356,8 +1370,8 @@ function subscribe(socket, id, eventName, projectId) {
   let query;
   if (eventName === 'activityAdded') {
     query = `subscription { ${eventName}(projectId: "${projectId}") { id agentId agent { id name } ticketId action details timestamp } }`;
-  } else if (eventName === 'ticketViewed') {
-    query = `subscription { ${eventName}(projectId: "${projectId}") { ticketId projectId agentId agentName } }`;
+  } else if (eventName === 'ticketAccessed') {
+    query = `subscription { ${eventName}(projectId: "${projectId}") { ticketId projectId agentId agentName action } }`;
   } else if (eventName === 'commentAdded') {
     query = `subscription { ${eventName}(projectId: "${projectId}") { id ticketId agent { id name } body createdAt } }`;
   } else {
@@ -1436,9 +1450,9 @@ function handleSubscriptionEvent(subId, data) {
     if (data.activityAdded) prependActivityEntry(data.activityAdded);
   }
 
-  // Ticket viewed → show agent viewing indicator
+  // Ticket accessed → briefly show agent and operation on its card
   if (subId === '8') {
-    handleTicketViewed(data);
+    handleTicketAccessed(data);
   }
 
   // Comment added → refresh modal if open for that ticket + reload board for comment count
@@ -1557,7 +1571,7 @@ async function showOverview() {
   clearDependencyArrows();
 
   if (ws) { ws.close(); ws = null; }
-  clearAllViewingTimers();
+  clearAllAccessTimers();
 
   await loadProjectOverview();
   connectWebSocket(null);

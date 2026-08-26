@@ -580,6 +580,7 @@ describe('GraphQL resolvers – subscriptions and field resolvers', () => {
       ['ticketDeleted', EVENTS.TICKET_DELETED, 'ticketDeleted'],
       ['activityAdded', EVENTS.ACTIVITY_ADDED, 'activityAdded'],
       ['commentAdded', EVENTS.COMMENT_ADDED, 'commentAdded'],
+      ['ticketAccessed', EVENTS.TICKET_ACCESSED, 'ticketAccessed'],
       ['ticketViewed', EVENTS.TICKET_VIEWED, 'ticketViewed'],
     ];
 

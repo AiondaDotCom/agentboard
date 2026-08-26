@@ -75,6 +75,12 @@ export function createResolvers(db: AgentboardDB): Record<string, unknown> {
         subscribe: (): AsyncIterableIterator<Record<string, unknown>> =>
           pubsub.asyncIterableIterator(EVENTS.PROJECT_CHANGED),
       },
+      ticketAccessed: {
+        subscribe: (root: unknown, args: SubscriptionArgs): AsyncIterableIterator<Record<string, unknown>> => {
+          void root;
+          return pubsub.asyncIterableIterator(EVENTS.TICKET_ACCESSED, (payload) => (payload as { projectId: string }).projectId === args.projectId);
+        },
+      },
       ticketViewed: {
         subscribe: (_: unknown, args: SubscriptionArgs): AsyncIterableIterator<Record<string, unknown>> =>
           pubsub.asyncIterableIterator(EVENTS.TICKET_VIEWED, (payload) => (payload as { projectId: string }).projectId === args.projectId),
