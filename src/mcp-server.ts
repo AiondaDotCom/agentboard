@@ -172,6 +172,14 @@ export function registerMcpTools(
   }, async ({ project_id, ticket_id, column }) =>
     wrap(() => service.moveTicket(project_id, ticket_id, column, agentId)));
 
+  mcp.tool('move_ticket_to_project', 'Move a ticket to a DIFFERENT project (it keeps its id, title, comments and history). Lands in the target project\'s first column unless "column" says otherwise. Dependencies never cross projects: the ticket\'s own dependencies are dropped, and the move is refused while other tickets still depend on it.', {
+    project_id: z.string().describe('Current project ID of the ticket'),
+    ticket_id: z.string().describe('Ticket ID'),
+    target_project_id: z.string().describe('Project ID to move the ticket to'),
+    column: z.string().optional().describe('Column id in the TARGET project (default: the target project\'s first column). Check get_project for the target\'s column configuration – column ids differ per project.'),
+  }, async ({ project_id, ticket_id, target_project_id, column }) =>
+    wrap(() => service.moveTicketToProject(project_id, ticket_id, target_project_id, column, agentId)));
+
   mcp.tool('assign_ticket', 'Assign a ticket to an agent, or unassign it. Note: if the ticket belongs to a group, assigning it claims the WHOLE group for that agent – other agents cannot take tickets of a claimed group until it is released (all tickets done or unassigned).', {
     project_id: z.string().describe('Project ID'),
     ticket_id: z.string().describe('Ticket ID'),

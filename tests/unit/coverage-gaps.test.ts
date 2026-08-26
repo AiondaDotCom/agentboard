@@ -222,7 +222,7 @@ describe('BoardService – remaining paths', () => {
     const agent = db.createAgent('w').id;
     const make = (): string => service.createTicket(p.id, 'x').id;
 
-    const patch = (method: 'updateTicket' | 'moveTicket' | 'assignTicket', fn: () => void): void => {
+    const patch = (method: 'updateTicket' | 'moveTicket' | 'moveTicketToProject' | 'assignTicket', fn: () => void): void => {
       const original = db[method].bind(db);
       (db as unknown as Record<string, unknown>)[method] = () => undefined;
       try {
@@ -237,6 +237,8 @@ describe('BoardService – remaining paths', () => {
     patch('moveTicket', () => service.moveTicket(p.id, t1, 'done'));
     patch('moveTicket', () => service.closeTicket(p.id, t1));
     patch('moveTicket', () => service.openTicket(p.id, t1));
+    const other = service.createProject('other');
+    patch('moveTicketToProject', () => service.moveTicketToProject(p.id, t1, other.id));
     patch('assignTicket', () => service.assignTicket(p.id, t1, agent));
     patch('assignTicket', () => service.unassignTicket(p.id, t1));
   });

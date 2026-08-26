@@ -803,6 +803,19 @@ async function openTicket(projectId, ticketId) {
   await loadActivity(projectId);
 }
 
+// Moving a ticket to another board: the ticket keeps its id, comments and
+// history, but loses its dependencies (they never cross projects).
+async function moveTicketToProject(projectId, ticketId, targetProjectId) {
+  const res = await fetch(`/api/projects/${projectId}/tickets/${ticketId}/project`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ target_project_id: targetProjectId }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+  return body;
+}
+
 window.closeTicket = closeTicket;
 window.openTicket = openTicket;
 
@@ -824,6 +837,52 @@ function setSideValue(id, value, placeholder) {
   if (!el) return;
   el.textContent = value || placeholder || '';
   toggleSideRow(el, !!(value || placeholder));
+}
+
+// Fills the "Project" row of the details sidebar. Picking a different project
+// moves the ticket there (after confirming, since dependencies are dropped).
+async function renderProjectPicker(ticket) {
+  const select = document.getElementById('modal-project-select');
+  if (!select) return;
+
+  let projects = [];
+  try {
+    projects = await fetchJSON('/api/projects');
+  } catch {
+    projects = [];
+  }
+
+  select.innerHTML = '';
+  projects.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.name;
+    if (p.id === ticket.projectId) opt.selected = true;
+    select.appendChild(opt);
+  });
+  select.disabled = projects.length < 2;
+
+  select.onchange = async () => {
+    const targetId = select.value;
+    if (targetId === ticket.projectId) return;
+    const targetName = projects.find(p => p.id === targetId)?.name || 'that project';
+    const depNote = (ticket.dependsOn || []).length > 0
+      ? '\n\nIts dependencies will be removed (dependencies cannot cross projects).'
+      : '';
+    if (!confirm(`Move ticket "${ticket.title}" to project "${targetName}"?${depNote}`)) {
+      select.value = ticket.projectId;
+      return;
+    }
+    try {
+      await moveTicketToProject(ticket.projectId, ticket.id, targetId);
+      closeModal();
+      await loadBoard(currentProjectId);
+      await loadActivity(currentProjectId);
+    } catch (e) {
+      alert(String(e.message || e));
+      select.value = ticket.projectId;
+    }
+  };
 }
 
 async function openModal(projectId, ticketId) {
@@ -884,6 +943,9 @@ async function openModal(projectId, ticketId) {
 
   // Group
   setSideValue('modal-group-display', ticket.group || '');
+
+  // Project picker – switching it moves the ticket to that board
+  await renderProjectPicker(ticket);
 
   // Last touched
   setSideValue('modal-updated', formatTime(ticket.updatedAt));

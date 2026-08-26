@@ -1273,6 +1273,28 @@ select:focus {
   margin-left: 0;
 }
 
+/* Project picker in the details sidebar – moves the ticket to another board */
+.modal-project-select {
+  width: 100%;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  cursor: pointer;
+}
+
+.modal-project-select:hover {
+  border-color: var(--accent);
+}
+
+.modal-project-select option {
+  background: #1b1f2a;
+  color: var(--text);
+}
+
 .modal-ticket .modal-title {
   margin-bottom: 18px;
 }

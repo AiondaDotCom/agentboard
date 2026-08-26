@@ -116,19 +116,22 @@ claude mcp add -t http -s user -H "X-Api-Key:$AGENT_KEY" agentboard http://local
 
 The server must be running (`./run.sh`) for MCP to be reachable.
 
-### Available Tools (16)
+### Available Tools (19)
 
 | Tool | Description |
 |------|-------------|
+| `batch` | Run up to 100 operations in one call (preferred for >1 operation) |
 | `list_projects` | List all projects |
 | `create_project` | Create a new project |
 | `get_project` | Get project details |
+| `update_project` | Rename a project or reconfigure its columns |
 | `delete_project` | Delete a project |
 | `list_tickets` | List tickets in a project |
 | `get_ticket` | Get ticket details |
 | `create_ticket` | Create a ticket |
 | `update_ticket` | Update ticket fields |
 | `move_ticket` | Move ticket to a column |
+| `move_ticket_to_project` | Move ticket to another project |
 | `assign_ticket` | Assign/unassign a ticket |
 | `delete_ticket` | Delete a ticket |
 | `add_comment` | Add a comment to a ticket |
@@ -179,6 +182,13 @@ curl -X PATCH http://localhost:3000/api/projects/$PROJECT_ID/tickets/$TICKET_ID/
   -H "X-Api-Key: $AGENT_KEY" \
   -H "Content-Type: application/json" \
   -d '{"column": "in_progress"}'
+
+# Move ticket to another project (column is optional, defaults to the
+# target project's first column)
+curl -X PATCH http://localhost:3000/api/projects/$PROJECT_ID/tickets/$TICKET_ID/project \
+  -H "X-Api-Key: $AGENT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"target_project_id": "'$OTHER_PROJECT_ID'"}'
 ```
 
 ## Demo Mode

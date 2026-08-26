@@ -135,6 +135,27 @@ export function createTicketRoutes(service: BoardService): Router {
     }
   });
 
+  // PATCH /api/projects/:id/tickets/:ticketId/project
+  router.patch('/tickets/:ticketId/project', auth, (req: Request, res: Response): void => {
+    try {
+      const projectId = routeParam(req, 'id');
+      const ticketId = routeParam(req, 'ticketId');
+      const { target_project_id, column } = req.body as { target_project_id?: unknown; column?: unknown };
+      const agentId = agentIdOf(req as AuthenticatedRequest);
+
+      const ticket = service.moveTicketToProject(
+        projectId,
+        ticketId,
+        target_project_id,
+        typeof column === 'string' ? column : undefined,
+        agentId,
+      );
+      res.json(ticket);
+    } catch (err) {
+      handleServiceError(res, err);
+    }
+  });
+
   // PATCH /api/projects/:id/tickets/:ticketId/assign
   router.patch('/tickets/:ticketId/assign', auth, (req: Request, res: Response): void => {
     try {
@@ -232,6 +253,23 @@ export function createHumanTicketRoutes(service: BoardService): Router {
       const projectId = routeParam(req, 'id');
       const ticketId = routeParam(req, 'ticketId');
       res.json(service.closeTicket(projectId, ticketId));
+    } catch (err) {
+      handleServiceError(res, err);
+    }
+  });
+
+  // POST /api/projects/:id/tickets/:ticketId/project (human action)
+  router.post('/tickets/:ticketId/project', (req: Request, res: Response): void => {
+    try {
+      const projectId = routeParam(req, 'id');
+      const ticketId = routeParam(req, 'ticketId');
+      const { target_project_id, column } = req.body as { target_project_id?: unknown; column?: unknown };
+      res.json(service.moveTicketToProject(
+        projectId,
+        ticketId,
+        target_project_id,
+        typeof column === 'string' ? column : undefined,
+      ));
     } catch (err) {
       handleServiceError(res, err);
     }

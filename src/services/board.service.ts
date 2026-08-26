@@ -523,6 +523,88 @@ export class BoardService {
     return ticket;
   }
 
+  /**
+   * Moves a ticket to a DIFFERENT project. The ticket keeps its id, title,
+   * comments and revision history; it lands in `column` of the target project
+   * (default: the target's first column).
+   *
+   * Rules:
+   * - Dependencies never cross projects. Tickets that still depend on this one
+   *   block the move (ConflictError); the ticket's own dependencies are
+   *   dropped and logged as a revision.
+   * - The group name travels with the ticket. If the target project has that
+   *   group claimed by another agent, an assigned ticket is refused.
+   */
+  moveTicketToProject(
+    projectId: string,
+    ticketId: string,
+    targetProjectId: unknown,
+    column?: string,
+    actorId?: string | null,
+  ): Ticket {
+    const source = this.requireProject(projectId);
+    const resolved = this.requireTicket(projectId, ticketId);
+
+    if (typeof targetProjectId !== 'string' || targetProjectId.trim().length === 0) {
+      throw new ValidationError('Missing or invalid "target_project_id" field');
+    }
+    const target = this.db.getProject(targetProjectId.trim());
+    if (!target) throw new NotFoundError('Target project not found');
+    if (target.id === source.id) {
+      throw new ValidationError(`Ticket is already in project "${source.name}"`);
+    }
+
+    const targetColumn = column ?? target.columns[0]!.id;
+    this.requireValidColumn(target, targetColumn);
+
+    // Dependencies only ever point inside one project: tickets that depend on
+    // this one would be left with a dangling gate, so they block the move.
+    const dependents = this.db.getDependentTickets(resolved.id);
+    if (dependents.length > 0) {
+      const list = dependents.map((t) => `#${t.id.slice(0, 8)} "${t.title}"`).join(', ');
+      throw new ConflictError(
+        `Cannot move ticket "${resolved.title}" to project "${target.name}": ${dependents.length} ticket${dependents.length !== 1 ? 's' : ''} in "${source.name}" still depend${dependents.length === 1 ? 's' : ''} on it: ${list}. Remove those dependencies first.`,
+      );
+    }
+
+    // Group claims are per project – moving into a group claimed by someone
+    // else is only allowed while the ticket is unassigned.
+    if (resolved.group) {
+      const claimer = this.findGroupClaimer(target.id, resolved.group, resolved.id);
+      if (claimer && resolved.assigneeId && resolved.assigneeId !== claimer.id) {
+        throw new ConflictError(
+          `Group "${resolved.group}" is claimed by agent "${claimer.name}" in project "${target.name}" – ticket is assigned to a different agent`,
+        );
+      }
+    }
+
+    const ticket = this.db.moveTicketToProject(projectId, resolved.id, target.id, targetColumn, actorId ?? null);
+    if (!ticket) throw new NotFoundError('Ticket not found');
+
+    // Both boards need to know: the source loses the ticket, the target gains it.
+    this.logAndPublishActivity(
+      actorId ?? null, source.id, ticket.id,
+      'ticket_moved', `Moved ticket "${ticket.title}" to project "${target.name}"`,
+    );
+    this.logAndPublishActivity(
+      actorId ?? null, target.id, ticket.id,
+      'ticket_moved', `Moved ticket "${ticket.title}" here from project "${source.name}"`,
+    );
+
+    pubsub.publish(EVENTS.TICKET_DELETED, {
+      ticketDeleted: resolved,
+      projectId: source.id,
+    });
+    pubsub.publish(EVENTS.TICKET_CREATED, {
+      ticketCreated: ticket,
+      projectId: target.id,
+    });
+
+    this.audit(actorId ?? null, 'MOVE', `ticket '${ticket.title}'`, `project '${source.name}' → '${target.name}' (${targetColumn})`);
+    if (actorId !== undefined && actorId !== null) this.notifyTicketAccess(target.id, ticket.id, actorId, 'move');
+    return ticket;
+  }
+
   deleteTicket(projectId: string, ticketId: string, actorId?: string | null): void {
     const ticket = this.requireTicket(projectId, ticketId);
     if (actorId !== undefined && actorId !== null) this.notifyTicketAccess(projectId, ticket.id, actorId, 'delete');
@@ -844,6 +926,8 @@ export class BoardService {
       }
       case 'move_ticket':
         return this.moveTicket(str('project_id'), str('ticket_id'), args['column'] as string, actorId);
+      case 'move_ticket_to_project':
+        return this.moveTicketToProject(str('project_id'), str('ticket_id'), args['target_project_id'], optStr('column'), actorId);
       case 'assign_ticket': {
         const assigneeId = args['assignee_id'];
         if (typeof assigneeId === 'string' && assigneeId.length > 0) {

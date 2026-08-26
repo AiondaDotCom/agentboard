@@ -754,6 +754,66 @@ export class AgentboardDB {
     return this.updateTicket(projectId, ticketId, { column }, actorId);
   }
 
+  /**
+   * Moves a ticket to another project: the ticket keeps its id (comments and
+   * revisions stay attached) and lands at the end of `column` in the target
+   * project. Dependencies are dropped – they only ever point inside one
+   * project – and every change is written to the revision trail.
+   */
+  moveTicketToProject(
+    projectId: string,
+    ticketId: string,
+    targetProjectId: string,
+    column: Column,
+    actorId?: string | null,
+  ): Ticket | undefined {
+    const existing = this.getTicket(projectId, ticketId);
+    if (existing === undefined) {
+      return undefined;
+    }
+
+    const actor = actorId !== undefined ? actorId : null;
+    this.logRevision(existing.id, actor, 'project', projectId, targetProjectId);
+    if (column !== existing.column) {
+      this.logRevision(existing.id, actor, 'column', existing.column, column);
+    }
+    if (existing.dependsOn.length > 0) {
+      this.logRevision(existing.id, actor, 'depends_on', existing.dependsOn.join(', '), '');
+    }
+
+    const maxPos = this.db
+      .prepare(
+        'SELECT COALESCE(MAX(position), -1) AS max_pos FROM tickets WHERE project_id = ? AND column_name = ?',
+      )
+      .get(targetProjectId, column) as { max_pos: number };
+
+    this.db
+      .prepare(
+        `UPDATE tickets
+         SET project_id = ?, column_name = ?, position = ?, updated_at = datetime('now')
+         WHERE id = ? AND project_id = ?`,
+      )
+      .run(targetProjectId, column, maxPos.max_pos + 1, existing.id, projectId);
+
+    this.setTicketDependencies(existing.id, []);
+
+    return this.getTicket(targetProjectId, existing.id);
+  }
+
+  /** Tickets that declare a dependency ON the given ticket (incoming edges). */
+  getDependentTickets(ticketId: string): Ticket[] {
+    const rows = this.db
+      .prepare(
+        `${TICKET_SELECT}
+         JOIN ticket_dependencies dep ON dep.ticket_id = t.id
+         WHERE dep.depends_on_id = ?
+         ORDER BY t.position ASC`,
+      )
+      .all(ticketId) as TicketRow[];
+
+    return rows.map((r) => this.mapTicketRow(r));
+  }
+
   /** All tickets of a group within a project (any column). */
   getTicketsByGroup(projectId: string, group: string): Ticket[] {
     const rows = this.db

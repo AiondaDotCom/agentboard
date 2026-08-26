@@ -723,7 +723,40 @@ test.describe('Agentboard E2E – Comprehensive Feature Test', () => {
   });
 
   // -------------------------------------------------------------------------
-  // 17. No JS console errors during full workflow
+  // 17. Moving a ticket to another project
+  // -------------------------------------------------------------------------
+
+  test('Ticket modal: project picker moves the ticket to another project', async ({ page, baseURL }) => {
+    const url = baseURL ?? 'http://localhost:3000';
+    const otherName = projectName.replace('E2E-', 'E2ETARGET-');
+    await apiCreateProject(url, adminKey, otherName, 'Move target');
+    await apiCreateTicket(url, agent.apiKey, project.id, 'Travelling Ticket', { column: 'in_progress' });
+
+    await login(page, adminKey);
+    await navigateToProject(page, projectName);
+
+    await page.locator('.ticket-card .ticket-title', { hasText: 'Travelling Ticket' }).click();
+    const picker = page.locator('#modal-project-select');
+    await expect(picker).toBeVisible();
+    await expect(picker.locator('option', { hasText: otherName })).toHaveCount(1);
+
+    // Confirm the move
+    page.once('dialog', (dialog) => void dialog.accept());
+    await picker.selectOption({ label: otherName });
+
+    // Modal closes and the ticket is gone from this board ...
+    await expect(page.locator('#ticket-modal')).toHaveClass(/hidden/);
+    await expect(page.locator('.ticket-card .ticket-title', { hasText: 'Travelling Ticket' })).toHaveCount(0);
+
+    // ... and shows up in the target project's first column
+    await navigateToProject(page, otherName);
+    await expect(
+      page.locator('[data-column="backlog"] .ticket-title', { hasText: 'Travelling Ticket' }),
+    ).toHaveCount(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // 18. No JS console errors during full workflow
   // -------------------------------------------------------------------------
 
   test('Full workflow: create → view → close → reopen → comment → history – no JS errors', async ({

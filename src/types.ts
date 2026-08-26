@@ -113,6 +113,7 @@ export const BATCH_OPS = [
   'create_ticket',
   'update_ticket',
   'move_ticket',
+  'move_ticket_to_project',
   'assign_ticket',
   'delete_ticket',
   'add_comment',

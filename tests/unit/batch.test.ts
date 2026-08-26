@@ -78,7 +78,7 @@ describe('Batch operations', () => {
 
   describe('BoardService.executeBatch – operations', () => {
     it('supports every advertised op', () => {
-      expect(BATCH_OPS).toHaveLength(16);
+      expect(BATCH_OPS).toHaveLength(17);
 
       const setup = service.executeBatch([
         { op: 'create_project', args: { name: 'p2', description: 'd', columns: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }] } },
@@ -107,6 +107,7 @@ describe('Batch operations', () => {
         { op: 'get_comments', args: { project_id: projectId, ticket_id: t1.id } },
         { op: 'get_ticket_history', args: { project_id: projectId, ticket_id: t1.id } },
         { op: 'list_agents' },
+        { op: 'move_ticket_to_project', args: { project_id: projectId, ticket_id: t1.id, target_project_id: p2.id, column: 'x' } },
         { op: 'delete_ticket', args: { project_id: projectId, ticket_id: t2.id } },
         { op: 'delete_project', args: { project_id: p2.id } },
       ], agentId);
@@ -122,9 +123,11 @@ describe('Batch operations', () => {
       expect((results[9]!.result as { body: string }).body).toBe('hi');
       expect((results[10]!.result as unknown[]).length).toBe(1);
       expect((results[12]!.result as { name: string }[]).map((a) => a.name)).toContain('batch-bot');
-      expect(results[13]!.result).toEqual({ deleted: true });
+      expect((results[13]!.result as { projectId: string; column: string }).projectId).toBe(p2.id);
+      expect((results[13]!.result as { column: string }).column).toBe('x');
       expect(results[14]!.result).toEqual({ deleted: true });
-      expect(service.getTicketsByProject(projectId).total).toBe(1);
+      expect(results[15]!.result).toEqual({ deleted: true });
+      expect(service.getTicketsByProject(projectId).total).toBe(0);
     });
 
     it('reports individual failures without stopping the rest (no rollback)', () => {
