@@ -395,6 +395,29 @@ select:focus {
   flex: 1;
 }
 
+.done-lazy-sentinel {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.done-lazy-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--glass-border);
+  border-top-color: var(--column-done);
+  border-radius: 50%;
+  animation: done-lazy-spin 0.8s linear infinite;
+}
+
+@keyframes done-lazy-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Tickets */
 .ticket-card {
   position: relative;

@@ -24,6 +24,13 @@ const FALLBACK_COLUMNS = [
 let currentProjectColumns = FALLBACK_COLUMNS;
 let boardTickets = []; // last rendered ticket list (for dependency lookups)
 
+// The finished column can grow indefinitely. Keep its DOM small and reveal
+// another batch when the user reaches the end; every other column renders all
+// of its tickets immediately.
+const DONE_TICKET_BATCH_SIZE = 20;
+let doneTicketRenderLimit = DONE_TICKET_BATCH_SIZE;
+let doneLazyLoadObserver = null;
+
 function doneColumnId() {
   return currentProjectColumns[currentProjectColumns.length - 1].id;
 }
@@ -428,10 +435,21 @@ function renderBoardColumns() {
   });
 }
 
-function renderBoard(tickets) {
+function renderBoard(tickets, { preserveScroll = false } = {}) {
   boardTickets = tickets;
   clearDependencyArrows();
   const columns = currentProjectColumns.map(c => c.id);
+  const scrollPositions = preserveScroll
+    ? new Map([...document.querySelectorAll('.column')].map(column => [
+      column.dataset.column,
+      column.querySelector('.ticket-list')?.scrollTop || 0,
+    ]))
+    : null;
+
+  if (doneLazyLoadObserver) {
+    doneLazyLoadObserver.disconnect();
+    doneLazyLoadObserver = null;
+  }
 
   // 1. Snapshot old positions
   const oldState = prevTicketState;
@@ -467,7 +485,10 @@ function renderBoard(tickets) {
     countEl.textContent = colTickets.length;
     colEl.innerHTML = '';
     const groupWrappers = new Map();
-    colTickets.forEach(t => {
+    const visibleTickets = col === doneColumnId()
+      ? colTickets.slice(0, doneTicketRenderLimit)
+      : colTickets;
+    visibleTickets.forEach(t => {
       const card = createTicketCard(t);
 
       // Hide moved tickets initially (will reveal after fly animation)
@@ -507,7 +528,34 @@ function renderBoard(tickets) {
         colEl.appendChild(card);
       }
     });
+
+    if (col === doneColumnId() && visibleTickets.length < colTickets.length) {
+      const sentinel = document.createElement('div');
+      sentinel.className = 'done-lazy-sentinel';
+      sentinel.setAttribute('aria-label', 'More finished tickets load while scrolling');
+      sentinel.innerHTML = '<span class="done-lazy-spinner"></span>Loading more&hellip;';
+      colEl.appendChild(sentinel);
+
+      doneLazyLoadObserver = new IntersectionObserver(entries => {
+        if (!entries.some(entry => entry.isIntersecting)) return;
+        doneLazyLoadObserver.disconnect();
+        doneLazyLoadObserver = null;
+        doneTicketRenderLimit = Math.min(
+          doneTicketRenderLimit + DONE_TICKET_BATCH_SIZE,
+          colTickets.length,
+        );
+        renderBoard(boardTickets, { preserveScroll: true });
+      }, { rootMargin: '200px 0px' });
+      doneLazyLoadObserver.observe(sentinel);
+    }
   });
+
+  if (scrollPositions) {
+    scrollPositions.forEach((scrollTop, col) => {
+      const list = document.querySelector(`[data-column="${col}"] .ticket-list`);
+      if (list) list.scrollTop = scrollTop;
+    });
+  }
 
   // Dissolve ghosts for group clusters that disappeared from a column
   oldGroupState.forEach((info, key) => {
@@ -1572,6 +1620,7 @@ let currentProjectName = null;
 async function selectProject(projectId, projectName) {
   currentProjectId = projectId || null;
   currentProjectName = projectName || null;
+  doneTicketRenderLimit = DONE_TICKET_BATCH_SIZE;
 
   const board = document.getElementById('board');
   const overview = document.getElementById('project-overview');

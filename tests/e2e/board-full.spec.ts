@@ -253,6 +253,34 @@ test.describe('Agentboard E2E – Comprehensive Feature Test', () => {
     await expect(page.locator('[data-column="done"] .column-count')).toHaveText('1');
   });
 
+  test('Board: lazy-renders only the finished column in batches of 20', async ({
+    page,
+    baseURL,
+  }) => {
+    const url = baseURL ?? 'http://localhost:3000';
+
+    await Promise.all([
+      ...Array.from({ length: 21 }, (_, i) =>
+        apiCreateTicket(url, agent.apiKey, project.id, `Backlog lazy ${i + 1}`, { column: 'backlog' })),
+      ...Array.from({ length: 21 }, (_, i) =>
+        apiCreateTicket(url, agent.apiKey, project.id, `Done lazy ${i + 1}`, { column: 'done' })),
+    ]);
+
+    await login(page, adminKey);
+    await navigateToProject(page, projectName);
+
+    await expect(page.locator('[data-column="backlog"] .ticket-card')).toHaveCount(21);
+    await expect(page.locator('[data-column="done"] .column-count')).toHaveText('21');
+    await expect(page.locator('[data-column="done"] .ticket-card')).toHaveCount(20);
+
+    const sentinel = page.locator('[data-column="done"] .done-lazy-sentinel');
+    await expect(sentinel).toHaveCount(1);
+    await sentinel.scrollIntoViewIfNeeded();
+
+    await expect(page.locator('[data-column="done"] .ticket-card')).toHaveCount(21);
+    await expect(sentinel).toHaveCount(0);
+  });
+
   test('Realtime access pulse shows which agent is reading a ticket', async ({ page, baseURL }) => {
     const url = baseURL ?? 'http://localhost:3000';
     const ticket = await apiCreateTicket(url, agent.apiKey, project.id, 'Agent Access Pulse');
