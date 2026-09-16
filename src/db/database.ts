@@ -115,9 +115,11 @@ interface RuntimeReportRow {
   working_codex: number;
   working_claude: number;
   working_opencode: number;
+  working_cursor: number;
   idle_codex: number;
   idle_claude: number;
   idle_opencode: number;
+  idle_cursor: number;
   reported_at: string;
 }
 
@@ -189,11 +191,11 @@ export class AgentboardDB {
       .get();
     if (hasRuntimeReports) {
       const columns = this.db.prepare('PRAGMA table_info(runtime_reports)').all() as { name: string }[];
-      if (!columns.some((c) => c.name === 'working_opencode')) {
-        this.db.exec('ALTER TABLE runtime_reports ADD COLUMN working_opencode INTEGER NOT NULL DEFAULT 0');
-      }
-      if (!columns.some((c) => c.name === 'idle_opencode')) {
-        this.db.exec('ALTER TABLE runtime_reports ADD COLUMN idle_opencode INTEGER NOT NULL DEFAULT 0');
+      const counters = ['working_opencode', 'idle_opencode', 'working_cursor', 'idle_cursor'];
+      for (const counter of counters) {
+        if (!columns.some((c) => c.name === counter)) {
+          this.db.exec(`ALTER TABLE runtime_reports ADD COLUMN ${counter} INTEGER NOT NULL DEFAULT 0`);
+        }
       }
     }
   }
@@ -315,9 +317,11 @@ export class AgentboardDB {
       workingCodex: row.working_codex,
       workingClaude: row.working_claude,
       workingOpenCode: row.working_opencode,
+      workingCursor: row.working_cursor,
       idleCodex: row.idle_codex,
       idleClaude: row.idle_claude,
       idleOpenCode: row.idle_opencode,
+      idleCursor: row.idle_cursor,
       reportedAt: row.reported_at,
     };
   }
@@ -371,18 +375,21 @@ export class AgentboardDB {
 
   upsertRuntimeReport(report: Omit<RuntimeReport, 'reportedAt'>): RuntimeReport {
     this.db.prepare(`INSERT INTO runtime_reports
-      (host, working_codex, working_claude, working_opencode, idle_codex, idle_claude, idle_opencode, reported_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      (host, working_codex, working_claude, working_opencode, working_cursor,
+       idle_codex, idle_claude, idle_opencode, idle_cursor, reported_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
       ON CONFLICT(host) DO UPDATE SET
         working_codex = excluded.working_codex,
         working_claude = excluded.working_claude,
         working_opencode = excluded.working_opencode,
+        working_cursor = excluded.working_cursor,
         idle_codex = excluded.idle_codex,
         idle_claude = excluded.idle_claude,
         idle_opencode = excluded.idle_opencode,
+        idle_cursor = excluded.idle_cursor,
         reported_at = excluded.reported_at`).run(
-      report.host, report.workingCodex, report.workingClaude, report.workingOpenCode,
-      report.idleCodex, report.idleClaude, report.idleOpenCode,
+      report.host, report.workingCodex, report.workingClaude, report.workingOpenCode, report.workingCursor,
+      report.idleCodex, report.idleClaude, report.idleOpenCode, report.idleCursor,
     );
     const row = this.db.prepare('SELECT * FROM runtime_reports WHERE host = ?')
       .get(report.host) as RuntimeReportRow;

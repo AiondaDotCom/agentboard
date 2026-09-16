@@ -19,9 +19,11 @@ describe('runtime activity reporting', () => {
     workingCodex: 2,
     workingClaude: 1,
     workingOpenCode: 0,
+    workingCursor: 0,
     idleCodex: 3,
     idleClaude: 4,
     idleOpenCode: 0,
+    idleCursor: 0,
   };
 
   beforeEach(() => {
@@ -40,7 +42,7 @@ describe('runtime activity reporting', () => {
     expect(service.getOrCreateRuntimeApiKey()).toBe(key);
   });
 
-  it('migrates existing runtime reports for OpenCode', () => {
+  it('migrates existing runtime reports for OpenCode and Cursor', () => {
     const directory = mkdtempSync(path.join(tmpdir(), 'agentboard-runtime-'));
     const databasePath = path.join(directory, 'legacy.db');
     const legacy = new Database(databasePath);
@@ -60,6 +62,8 @@ describe('runtime activity reporting', () => {
       expect(migrated.getRuntimeReports(0)[0]).toMatchObject({
         workingOpenCode: 0,
         idleOpenCode: 0,
+        workingCursor: 0,
+        idleCursor: 0,
       });
       migrated.close();
 
@@ -76,7 +80,7 @@ describe('runtime activity reporting', () => {
     const iterator = pubsub.subscribe(EVENTS.RUNTIME_STATUS_CHANGED);
     const result = service.reportRuntime(payload);
     expect(result).toMatchObject({
-      working: 3, idle: 7, codexWorking: 2, claudeWorking: 1, openCodeWorking: 0,
+      working: 3, idle: 7, codexWorking: 2, claudeWorking: 1, openCodeWorking: 0, cursorWorking: 0,
     });
     expect(result.hosts[0]).toMatchObject(payload);
     expect((await iterator.next()).value).toEqual({ runtimeStatusChanged: result });
@@ -92,6 +96,29 @@ describe('runtime activity reporting', () => {
       idleOpenCode: 2,
     });
     expect(withOpenCode).toMatchObject({ working: 7, idle: 9, openCodeWorking: 4 });
+
+    const withCursor = service.reportRuntime({
+      ...payload,
+      workingOpenCode: 4,
+      idleOpenCode: 2,
+      workingCursor: 3,
+      idleCursor: 1,
+    });
+    expect(withCursor).toMatchObject({ working: 10, idle: 10, cursorWorking: 3 });
+  });
+
+  it('defaults absent Cursor counts to 0 so older collectors keep reporting', () => {
+    const status = service.reportRuntime({
+      host: 'cortex',
+      workingCodex: 2,
+      workingClaude: 1,
+      workingOpenCode: 0,
+      idleCodex: 3,
+      idleClaude: 4,
+      idleOpenCode: 0,
+    });
+    expect(status).toMatchObject({ working: 3, idle: 7, cursorWorking: 0 });
+    expect(status.hosts[0]).toMatchObject({ workingCursor: 0, idleCursor: 0 });
   });
 
   it('tracks one persistent non-stop working streak across count changes', () => {
@@ -137,6 +164,8 @@ describe('runtime activity reporting', () => {
     [{ ...payload, idleCodex: 1001 }, 'idleCodex'],
     [{ ...payload, idleClaude: undefined }, 'idleClaude'],
     [{ ...payload, idleOpenCode: 1.5 }, 'idleOpenCode'],
+    [{ ...payload, workingCursor: -1 }, 'workingCursor'],
+    [{ ...payload, idleCursor: 1.5 }, 'idleCursor'],
   ])('rejects invalid reports', (body, field) => {
     expect(() => service.reportRuntime(body)).toThrow(field);
   });

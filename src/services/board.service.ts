@@ -37,6 +37,15 @@ import { NotFoundError, ValidationError, DuplicateError, ConflictError } from '.
 const MAX_COLUMNS = 20;
 const RUNTIME_HOST_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
+/** Validates an optional runtime counter, defaulting an absent one to 0. */
+function optionalCount(value: number | undefined, field: string): number {
+  if (value === undefined) return 0;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 1000) {
+    throw new ValidationError(`Invalid "${field}" field`);
+  }
+  return value;
+}
+
 export class BoardService {
   constructor(private db: AgentboardDB) {}
 
@@ -93,8 +102,14 @@ export class BoardService {
         throw new ValidationError(`Invalid "${field}" field`);
       }
     }
+    // Cursor counts only exist in newer collectors. Treat them as optional so a
+    // host still running the previous collector keeps reporting during a rollout.
+    const cursor = {
+      workingCursor: optionalCount(report.workingCursor, 'workingCursor'),
+      idleCursor: optionalCount(report.idleCursor, 'idleCursor'),
+    };
     const wasWorking = this.getRuntimeStatus().working > 0;
-    this.db.upsertRuntimeReport(report as Omit<RuntimeReport, 'reportedAt'>);
+    this.db.upsertRuntimeReport({ ...(report as Omit<RuntimeReport, 'reportedAt'>), ...cursor });
     const updatedStatus = this.getRuntimeStatus();
     const existingStart = this.db.getSetting('runtime_work_started_at');
     if (updatedStatus.working > 0 && (!wasWorking || existingStart === undefined)) {
@@ -110,19 +125,20 @@ export class BoardService {
   getRuntimeStatus(): RuntimeStatus {
     const hosts = this.db.getRuntimeReports();
     const working = hosts.reduce(
-      (sum, host) => sum + host.workingCodex + host.workingClaude + host.workingOpenCode,
+      (sum, host) => sum + host.workingCodex + host.workingClaude + host.workingOpenCode + host.workingCursor,
       0,
     );
     const workingSince = working > 0 ? this.db.getSetting('runtime_work_started_at') ?? null : null;
     return {
       working,
       idle: hosts.reduce(
-        (sum, host) => sum + host.idleCodex + host.idleClaude + host.idleOpenCode,
+        (sum, host) => sum + host.idleCodex + host.idleClaude + host.idleOpenCode + host.idleCursor,
         0,
       ),
       codexWorking: hosts.reduce((sum, host) => sum + host.workingCodex, 0),
       claudeWorking: hosts.reduce((sum, host) => sum + host.workingClaude, 0),
       openCodeWorking: hosts.reduce((sum, host) => sum + host.workingOpenCode, 0),
+      cursorWorking: hosts.reduce((sum, host) => sum + host.workingCursor, 0),
       workingSince,
       workingForSeconds: workingSince === null
         ? 0

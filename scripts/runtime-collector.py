@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Low-overhead Codex, Claude Code, and OpenCode activity collector."""
+"""Low-overhead Codex, Claude Code, OpenCode, and Cursor activity collector."""
 
 from __future__ import annotations
 
@@ -23,25 +23,35 @@ _file_cache: dict[Path, tuple[float, list[Path]]] = {}
 _state_cache: dict[Path, tuple[int, bool]] = {}
 
 
-def process_counts() -> tuple[int, int, int]:
-    """Return running Codex/Claude Code/OpenCode CLI process counts."""
+# Executable basename -> agent kind. Cursor's CLI installs its launcher as
+# ~/.local/bin/agent, so its process is named "agent" rather than "cursor".
+PROCESS_KINDS = {
+    "codex": "codex",
+    "claude": "claude",
+    "opencode": "opencode",
+    "agent": "cursor",
+    "cursor-agent": "cursor",
+}
+
+
+def process_counts() -> dict[str, int]:
+    """Return running Codex/Claude Code/OpenCode/Cursor CLI process counts."""
     result = subprocess.run(
         ["ps", "-axo", "command="],
         check=False,
         capture_output=True,
         text=True,
     )
-    running = {"codex": 0, "claude": 0, "opencode": 0}
+    running = {"codex": 0, "claude": 0, "opencode": 0, "cursor": 0}
     for line in result.stdout.splitlines():
         parts = line.strip().split(None, 1)
         if not parts:
             continue
-        executable = Path(parts[0]).name.lower()
-        kind = executable if executable in running else None
+        kind = PROCESS_KINDS.get(Path(parts[0]).name.lower())
         if kind is None:
             continue
         running[kind] += 1
-    return running["codex"], running["claude"], running["opencode"]
+    return running
 
 
 def recent_jsonl(root: Path) -> list[Path]:
@@ -110,6 +120,22 @@ def cached_state(path: Path, kind: str) -> bool:
                 state = True
             elif event in ("task_complete", "turn_aborted"):
                 state = False
+    elif kind == "cursor":
+        for record in records:
+            if record.get("type") == "turn_ended":
+                state = False
+                continue
+            role = record.get("role")
+            if role == "user":
+                state = True
+            elif role == "assistant":
+                # Mid-turn assistant messages always carry tool calls; the
+                # closing message of a turn is text only.
+                content = record.get("message", {}).get("content")
+                state = isinstance(content, list) and any(
+                    isinstance(part, dict) and part.get("type") == "tool_use"
+                    for part in content
+                )
     else:
         for record in records:
             record_type = record.get("type")
@@ -173,22 +199,32 @@ def opencode_working() -> int:
         return 0
 
 
+def cursor_working() -> int:
+    """Count Cursor CLI sessions that are mid-turn."""
+    return sum(cached_state(path, "cursor") for path in recent_jsonl(Path.home() / ".cursor" / "projects"))
+
+
 def status() -> dict[str, int | str]:
-    codex, claude, opencode = process_counts()
+    running = process_counts()
     # Subagents can share their parent CLI process. Count active session turns
     # instead of capping them at the number of OS processes.
     # The process count remains a liveness guard against stale unfinished logs.
-    working_codex = codex_working() if codex > 0 else 0
-    working_claude = claude_working() if claude > 0 else 0
-    working_opencode = opencode_working() if opencode > 0 else 0
+    working = {
+        "codex": codex_working() if running["codex"] > 0 else 0,
+        "claude": claude_working() if running["claude"] > 0 else 0,
+        "opencode": opencode_working() if running["opencode"] > 0 else 0,
+        "cursor": cursor_working() if running["cursor"] > 0 else 0,
+    }
     return {
         "host": socket.gethostname().split(".")[0],
-        "workingCodex": working_codex,
-        "workingClaude": working_claude,
-        "workingOpenCode": working_opencode,
-        "idleCodex": max(0, codex - working_codex),
-        "idleClaude": max(0, claude - working_claude),
-        "idleOpenCode": max(0, opencode - working_opencode),
+        "workingCodex": working["codex"],
+        "workingClaude": working["claude"],
+        "workingOpenCode": working["opencode"],
+        "workingCursor": working["cursor"],
+        "idleCodex": max(0, running["codex"] - working["codex"]),
+        "idleClaude": max(0, running["claude"] - working["claude"]),
+        "idleOpenCode": max(0, running["opencode"] - working["opencode"]),
+        "idleCursor": max(0, running["cursor"] - working["cursor"]),
     }
 
 

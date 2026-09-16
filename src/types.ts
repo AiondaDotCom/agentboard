@@ -15,9 +15,11 @@ export interface RuntimeReport {
   workingCodex: number;
   workingClaude: number;
   workingOpenCode: number;
+  workingCursor: number;
   idleCodex: number;
   idleClaude: number;
   idleOpenCode: number;
+  idleCursor: number;
   reportedAt: string;
 }
 
@@ -27,6 +29,7 @@ export interface RuntimeStatus {
   codexWorking: number;
   claudeWorking: number;
   openCodeWorking: number;
+  cursorWorking: number;
   workingSince: string | null;
   workingForSeconds: number;
   hosts: RuntimeReport[];
