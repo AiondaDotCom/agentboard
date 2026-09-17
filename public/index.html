@@ -86,7 +86,7 @@
     <div class="modal modal-ticket" onclick="event.stopPropagation()">
       <div class="modal-header">
         <span id="modal-ticket-id" class="modal-ticket-id"></span>
-        <button class="modal-close" onclick="closeModal()">&times;</button>
+        <button class="modal-close" aria-label="Close dialog" onclick="closeModal()">&times;</button>
       </div>
 
       <div class="modal-body">
@@ -162,7 +162,7 @@
     <div class="modal" onclick="event.stopPropagation()">
       <div class="modal-header">
         <div><span class="modal-title" style="font-size:18px">Board Columns</span></div>
-        <button class="modal-close" onclick="closeColumnsModal()">&times;</button>
+        <button class="modal-close" aria-label="Close dialog" onclick="closeColumnsModal()">&times;</button>
       </div>
       <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px">
         Configure the columns of this board. The <strong>first</strong> column is where new tickets land,
@@ -183,7 +183,7 @@
     <div class="modal" onclick="event.stopPropagation()">
       <div class="modal-header">
         <div><span class="modal-title" style="font-size:18px">Registered Agents</span></div>
-        <button class="modal-close" onclick="closeAgentsModal()">&times;</button>
+        <button class="modal-close" aria-label="Close dialog" onclick="closeAgentsModal()">&times;</button>
       </div>
       <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px">Copy an API key and share it with the agent so it can authenticate via <code style="color:var(--accent)">X-Api-Key</code> header.</p>
       <div id="agents-list" class="agents-list"></div>

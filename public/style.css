@@ -46,6 +46,7 @@ body {
   background-attachment: fixed;
   color: var(--text);
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   -webkit-font-smoothing: antialiased;
@@ -308,7 +309,7 @@ select:focus {
 /* Board */
 .board {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(var(--column-count, 5), minmax(220px, 1fr));
   gap: 14px;
   padding: 20px 24px;
   flex: 1;
@@ -1021,8 +1022,10 @@ select:focus {
   border-radius: var(--radius);
   width: 92vw;
   height: 90vh;
+  height: 90dvh;
   max-width: 92vw;
   max-height: 90vh;
+  max-height: 90dvh;
   overflow: hidden;
   padding: 32px 40px;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6), 0 0 40px var(--accent-glow);
@@ -2147,4 +2150,129 @@ tr.overview-flash {
   border: 1px solid rgba(239, 68, 68, 0.3);
   color: #fca5a5;
   font-size: 13px;
+}
+
+/* Keep long names and generated content inside their layout containers. */
+.header-left, .header-right, .column, .modal-side, .modal-side-value,
+.columns-editor-title, .activity-text, .overview-table-wrap {
+  min-width: 0;
+}
+
+.ticket-title, .ticket-blocked, .modal-title, .modal-blocked,
+.markdown-body, .modal-revision, .agent-row-name, .activity-text,
+.column-title, .overview-project-name, .modal-dep-item {
+  overflow-wrap: anywhere;
+}
+
+.markdown-body img { max-width: 100%; height: auto; }
+.markdown-body table { display: block; overflow-x: auto; }
+.column-header { gap: 8px; }
+.column-count, .runtime-dot, .modal-close { flex-shrink: 0; }
+.group-claim { max-width: 65%; overflow: hidden; text-overflow: ellipsis; }
+.modal-header { flex-shrink: 0; gap: 12px; }
+.modal:not(.modal-ticket) { overflow-y: auto; overscroll-behavior: contain; }
+.columns-editor-list { flex-shrink: 0; }
+body:has(.modal-overlay:not(.hidden)) { overflow: hidden; }
+
+/* Let the header flow before its status and project controls can overlap. */
+@media (max-width: 1200px) {
+  header { flex-wrap: wrap; gap: 12px; }
+  .header-right { flex-wrap: wrap; justify-content: flex-end; flex: 1; }
+  .runtime-status { position: static; transform: none; white-space: normal; }
+  .current-project-name { max-width: 100%; overflow-wrap: anywhere; }
+}
+
+@media (max-width: 760px), (max-width: 1000px) and (pointer: coarse) {
+  header { padding: 10px 12px; gap: 8px; position: relative; }
+  .header-left { width: 100%; gap: 12px; }
+  .logo-link { min-height: 44px; }
+  .logo-img { height: 26px; }
+  .logo-text { font-size: 14px; letter-spacing: 1px; }
+  .header-right { width: 100%; flex-basis: 100%; justify-content: flex-start; gap: 8px; }
+  .runtime-status { order: -2; width: 100%; line-height: 1.5; }
+  .current-project-name { order: -1; width: 100%; }
+  .btn-small, .btn-copy, .btn-logout, .modal-close, .modal-tab,
+  .badge, .current-project-name, .modal-project-select {
+    min-height: 44px;
+  }
+  .badge, .current-project-name { display: inline-flex; align-items: center; }
+  .modal-close { min-width: 44px; }
+  .btn-edit-columns { margin-right: auto; }
+  input, select, .columns-editor-title, .modal-project-select { font-size: 16px; }
+
+  .project-overview { padding: 16px 12px; }
+  .overview-table, .overview-table tbody { display: block; }
+  .overview-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .overview-table tbody tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 16px;
+    border-bottom: 1px solid var(--glass-border);
+  }
+  .overview-table tbody td { padding: 0; min-width: 0; }
+  .overview-table tbody td:first-child { grid-column: 1; grid-row: 1; }
+  .overview-table tbody td.overview-cols { grid-column: 1 / -1; grid-row: 2; }
+  .overview-table tbody td.col-total { grid-column: 2; grid-row: 1; align-self: start; padding: 8px; }
+  .overview-count.col-total::after { content: ' tickets'; font-size: 11px; font-weight: 500; }
+  .overview-project-desc { white-space: normal; overflow-wrap: anywhere; }
+  .overview-project-id { padding: 12px 0; }
+  .stat-chip { max-width: 100%; white-space: normal; }
+  .stat-chip-label { overflow-wrap: anywhere; }
+
+  .board {
+    grid-template-columns: repeat(var(--column-count, 5), min(86vw, 380px));
+    gap: 12px;
+    padding: 16px 12px;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: 12px;
+    align-items: start;
+    flex: none;
+  }
+  .column { scroll-snap-align: start; max-height: 75vh; max-height: 75dvh; }
+  .ticket-list { min-height: 0; }
+  .ticket-meta { flex-wrap: wrap; }
+  .ticket-deps { min-height: 44px; display: inline-flex; align-items: center; }
+
+  .modal-overlay { padding: 8px; }
+  .modal {
+    width: 100%;
+    max-width: 100%;
+    height: calc(100dvh - 16px);
+    max-height: calc(100dvh - 16px);
+    padding: 16px;
+  }
+  .modal-ticket { padding: 0; }
+  .modal-ticket .modal-header { padding: 8px 12px; }
+  .modal-ticket-id { min-width: 0; overflow-wrap: anywhere; }
+  .modal-body { padding: 16px; gap: 16px; }
+  .modal-title { font-size: 20px; }
+  .modal-side-panel { padding: 12px; }
+  .modal-side-row { grid-template-columns: 72px minmax(0, 1fr); gap: 8px; }
+  .modal-column-badge { white-space: normal; overflow-wrap: anywhere; }
+  .modal-comment-header, .modal-revision-header { flex-wrap: wrap; gap: 6px; }
+  .modal-dep-item { flex-wrap: wrap; }
+  .modal-dep-title { min-width: 0; }
+  .columns-editor-row { display: grid; grid-template-columns: minmax(0, 1fr) repeat(3, 44px); gap: 6px; }
+  .columns-editor-title { grid-column: 1 / -1; width: 100%; min-height: 44px; }
+  .columns-editor-drag { display: none; }
+  .columns-editor-id { min-width: 0; text-align: left; overflow-wrap: anywhere; }
+  .columns-editor-actions { padding-bottom: env(safe-area-inset-bottom); }
+  .agents-list { max-height: none; flex-shrink: 0; }
+  .agent-row { padding: 12px; gap: 8px; }
+
+  .activity-header, .audit-header { padding: 10px 12px; }
+  .activity-list { padding: 6px 12px; }
+  .activity-item { align-items: flex-start; }
+  .audit-list { padding: 0 12px 10px; }
+  .audit-item { grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px 10px; }
+  .audit-path { grid-column: 1 / -1; grid-row: 2; }
+  .audit-agent { overflow-wrap: anywhere; }
+  .audit-time { grid-column: 3; grid-row: 1; }
 }

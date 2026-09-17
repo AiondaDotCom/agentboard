@@ -418,7 +418,7 @@ function createGroupWrapper(group, claimer) {
 function renderBoardColumns() {
   const board = document.getElementById('board');
   board.innerHTML = '';
-  board.style.gridTemplateColumns = `repeat(${currentProjectColumns.length}, 1fr)`;
+  board.style.setProperty('--column-count', currentProjectColumns.length);
   currentProjectColumns.forEach(col => {
     const div = document.createElement('div');
     div.className = 'column';
@@ -1166,7 +1166,7 @@ function columnEditorRow(col) {
   row.dataset.colId = col.id || '';
   row.innerHTML = `
     <span class="columns-editor-drag">&#x2630;</span>
-    <input type="text" class="columns-editor-title" value="${escapeHtml(col.title)}" placeholder="Column name" maxlength="50">
+    <input type="text" class="columns-editor-title" aria-label="Column name" value="${escapeHtml(col.title)}" placeholder="Column name" maxlength="50">
     <span class="columns-editor-id">${col.id ? escapeHtml(col.id) : ''}</span>
     <button class="btn-small" title="Move up" onclick="moveColumnRow(this, -1)">&#x25B2;</button>
     <button class="btn-small" title="Move down" onclick="moveColumnRow(this, 1)">&#x25BC;</button>
