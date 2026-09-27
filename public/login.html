@@ -207,7 +207,9 @@
         });
 
         if (res.ok) {
-          window.location.href = '/';
+          // Only follow same-origin paths (no "//host" open redirects)
+          const next = new URLSearchParams(window.location.search).get('next');
+          window.location.href = next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
         } else {
           const data = await res.json();
           errorEl.textContent = data.error || 'Invalid key';

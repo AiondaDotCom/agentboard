@@ -11,6 +11,66 @@ let runtimePollTimer = null;
 let runtimeDurationTimer = null;
 let runtimeStatusSnapshot = null;
 
+// ---------------------------------------------------------------------------
+// URL routing: /  |  /projects/:projectId  |  /projects/:projectId/tickets/:ticketId
+// ---------------------------------------------------------------------------
+
+function parseRoute(pathname = window.location.pathname) {
+  const m = pathname.match(/^\/projects\/([^/]+)(?:\/tickets\/([^/]+))?\/?$/);
+  if (!m) return { projectId: null, ticketId: null };
+  return { projectId: decodeURIComponent(m[1]), ticketId: m[2] ? decodeURIComponent(m[2]) : null };
+}
+
+function projectPath(projectId) {
+  return `/projects/${encodeURIComponent(projectId)}`;
+}
+
+function ticketPath(projectId, ticketId) {
+  return `${projectPath(projectId)}/tickets/${encodeURIComponent(ticketId)}`;
+}
+
+// Pushes (or replaces) a history entry unless the URL is already current.
+function navigate(path, { replace = false, state = {} } = {}) {
+  if (window.location.pathname === path) return;
+  if (replace) history.replaceState(state, '', path);
+  else history.pushState(state, '', path);
+}
+
+function updateDocumentTitle() {
+  const parts = [];
+  if (currentModalTicket) parts.push(currentModalTicket.title);
+  if (currentProjectId && currentProjectName) parts.push(currentProjectName);
+  parts.push('AI Agentboard');
+  document.title = parts.join(' · ');
+}
+
+// Brings the UI in line with the current URL (initial load + back/forward).
+async function applyRoute() {
+  const { projectId, ticketId } = parseRoute();
+  if (!projectId) {
+    hideModal();
+    if (currentProjectId) await showOverview({ fromRoute: true });
+    return;
+  }
+  if (projectId !== currentProjectId) {
+    hideModal();
+    const ok = await selectProject(projectId, null, { fromRoute: true });
+    if (!ok) return;
+  }
+  if (ticketId) {
+    if (!currentModalTicket || currentModalTicket.id !== ticketId) {
+      await openModal(projectId, ticketId, { fromRoute: true });
+    }
+  } else {
+    hideModal();
+  }
+}
+
+window.addEventListener('popstate', () => {
+  modalHistoryEntry = false;
+  applyRoute().catch(e => console.error('[agentboard] Routing failed:', e));
+});
+
 // Column config of the currently opened project: [{id, title}, ...]
 // First column = inbox for new tickets, last column = finished/done.
 const FALLBACK_COLUMNS = [
@@ -216,7 +276,10 @@ async function loadProjectOverview() {
     projects.forEach(p => {
       const tr = document.createElement('tr');
       tr.dataset.projectId = p.id;
-      tr.onclick = () => selectProject(p.id, p.name);
+      tr.onclick = (e) => {
+        if (e.metaKey || e.ctrlKey) { window.open(projectPath(p.id), '_blank'); return; }
+        selectProject(p.id, p.name);
+      };
       tr.innerHTML = buildRowHtml(p);
 
       const isNew = !!prevOverviewStats[p.id] === false && Object.keys(prevOverviewStats).length > 0;
@@ -233,7 +296,7 @@ async function loadProjectOverview() {
 
   // Auto-select if exactly one project
   if (projects.length === 1 && !currentProjectId) {
-    await selectProject(projects[0].id, projects[0].name);
+    await selectProject(projects[0].id, projects[0].name, { replace: true });
   }
 
   return projects;
@@ -872,6 +935,8 @@ window.openTicket = openTicket;
 // ---------------------------------------------------------------------------
 
 let currentModalTicket = null;
+// True while the open modal owns its own history entry (so closing = back).
+let modalHistoryEntry = false;
 
 // Details sidebar helpers: a row without a value is hidden entirely (Jira-style),
 // unless a placeholder like "Unassigned" is given.
@@ -933,15 +998,32 @@ async function renderProjectPicker(ticket) {
   };
 }
 
-async function openModal(projectId, ticketId) {
+async function openModal(projectId, ticketId, { fromRoute = false } = {}) {
   const modal = document.getElementById('ticket-modal');
-  const [ticket, comments, revisions] = await Promise.all([
-    fetchJSON(`/api/projects/${projectId}/tickets/${ticketId}`),
-    fetchJSON(`/api/projects/${projectId}/tickets/${ticketId}/comments`),
-    fetchJSON(`/api/projects/${projectId}/tickets/${ticketId}/revisions`),
-  ]);
+  let ticket, comments, revisions;
+  try {
+    [ticket, comments, revisions] = await Promise.all([
+      fetchJSON(`/api/projects/${projectId}/tickets/${ticketId}`),
+      fetchJSON(`/api/projects/${projectId}/tickets/${ticketId}/comments`),
+      fetchJSON(`/api/projects/${projectId}/tickets/${ticketId}/revisions`),
+    ]);
+  } catch (e) {
+    // Unknown ticket in the URL: fall back to the board
+    if (!fromRoute) throw e;
+    navigate(projectPath(projectId), { replace: true });
+    return;
+  }
+  if (!ticket || !ticket.id) {
+    if (fromRoute) navigate(projectPath(projectId), { replace: true });
+    return;
+  }
 
   currentModalTicket = ticket;
+  if (!fromRoute) {
+    navigate(ticketPath(projectId, ticket.id));
+    modalHistoryEntry = true;
+  }
+  updateDocumentTitle();
 
   // Header
   const modalIdEl = document.getElementById('modal-ticket-id');
@@ -1098,10 +1180,25 @@ async function openModal(projectId, ticketId) {
   if (body) body.scrollTop = 0;
 }
 
-function closeModal(event) {
-  if (event && event.target !== event.currentTarget) return;
+// Hides the modal without touching the URL (used by the router).
+function hideModal() {
   document.getElementById('ticket-modal').classList.add('hidden');
   currentModalTicket = null;
+  updateDocumentTitle();
+}
+
+function closeModal(event) {
+  if (event && event.target !== event.currentTarget) return;
+  if (!currentModalTicket) return;
+  hideModal();
+  if (!currentProjectId) return;
+  if (modalHistoryEntry) {
+    // Drop the ticket entry so "back" doesn't reopen the modal
+    modalHistoryEntry = false;
+    history.back();
+  } else {
+    navigate(projectPath(currentProjectId));
+  }
 }
 
 function switchTab(tabName) {
@@ -1529,6 +1626,7 @@ function handleSubscriptionEvent(subId, data) {
       }
       if (changed.name) {
         currentProjectName = changed.name;
+        updateDocumentTitle();
         document.getElementById('current-project-name').textContent = `← ${changed.name}`;
       }
     }
@@ -1617,10 +1715,30 @@ function hideLoading() {
 
 let currentProjectName = null;
 
-async function selectProject(projectId, projectName) {
-  currentProjectId = projectId || null;
-  currentProjectName = projectName || null;
+// Returns false if the project could not be opened (e.g. unknown id in the URL).
+async function selectProject(projectId, projectName, { fromRoute = false, replace = false } = {}) {
+  if (!projectId) {
+    await showOverview({ fromRoute });
+    return false;
+  }
+
+  // Load the project first (column config + name for deep links)
+  let project;
+  try {
+    project = await fetchJSON(`/api/projects/${projectId}`);
+  } catch {
+    project = null;
+  }
+  if (!project || !project.id) {
+    await showOverview({ replace: true });
+    return false;
+  }
+
+  currentProjectId = project.id;
+  currentProjectName = project.name || projectName || null;
   doneTicketRenderLimit = DONE_TICKET_BATCH_SIZE;
+  if (!fromRoute) navigate(projectPath(currentProjectId), { replace });
+  updateDocumentTitle();
 
   const board = document.getElementById('board');
   const overview = document.getElementById('project-overview');
@@ -1631,7 +1749,7 @@ async function selectProject(projectId, projectName) {
   // Stop overview polling
   if (overviewPollTimer) { clearInterval(overviewPollTimer); overviewPollTimer = null; }
 
-  if (currentProjectId) {
+  {
     overview.style.display = 'none';
     board.classList.remove('hidden');
     board.style.display = 'grid';
@@ -1643,13 +1761,7 @@ async function selectProject(projectId, projectName) {
     projectLabel.style.display = '';
     document.getElementById('edit-columns-btn').style.display = '';
 
-    // Load the project's column config before rendering the board
-    try {
-      const project = await fetchJSON(`/api/projects/${currentProjectId}`);
-      currentProjectColumns = (project.columns && project.columns.length) ? project.columns : FALLBACK_COLUMNS;
-    } catch {
-      currentProjectColumns = FALLBACK_COLUMNS;
-    }
+    currentProjectColumns = (project.columns && project.columns.length) ? project.columns : FALLBACK_COLUMNS;
     renderBoardColumns();
     prevTicketState = new Map();
     prevGroupState = new Map();
@@ -1658,14 +1770,16 @@ async function selectProject(projectId, projectName) {
     await loadActivity(currentProjectId);
     await loadAudit();
     connectWebSocket(currentProjectId);
-  } else {
-    showOverview();
   }
+  return true;
 }
 
-async function showOverview() {
+async function showOverview({ fromRoute = false, replace = false } = {}) {
   currentProjectId = null;
   currentProjectName = null;
+  if (currentModalTicket) hideModal();
+  if (!fromRoute) navigate('/', { replace });
+  updateDocumentTitle();
 
   const board = document.getElementById('board');
   const overview = document.getElementById('project-overview');
@@ -1699,7 +1813,11 @@ window.showOverview = showOverview;
 async function init() {
   try {
     await Promise.all([loadAgents(), loadRuntimeStatus()]);
-    await loadProjectOverview(); // may auto-select if single project
+    if (parseRoute().projectId) {
+      await applyRoute(); // deep link to a project / ticket
+    } else {
+      await loadProjectOverview(); // may auto-select if single project
+    }
   } catch (e) {
     console.error('[agentboard] Init failed:', e);
   }
@@ -1709,8 +1827,8 @@ async function init() {
     if (runtimeStatusSnapshot) renderRuntimeStatus(runtimeStatusSnapshot);
   }, 1000);
 
-  // Start overview polling + WS if still on overview
-  if (!currentProjectId) {
+  // Start overview polling + WS if still on overview (unless showOverview already did)
+  if (!currentProjectId && !overviewPollTimer) {
     connectWebSocket(null);
     overviewPollTimer = setInterval(() => {
       if (!currentProjectId) loadProjectOverview();

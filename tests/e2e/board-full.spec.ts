@@ -639,6 +639,83 @@ test.describe('Agentboard E2E – Comprehensive Feature Test', () => {
     await expect(page.locator('#project-overview')).toBeVisible();
   });
 
+  test('Routing: project and ticket are reflected in the URL, back button works', async ({
+    page,
+    baseURL,
+  }) => {
+    const url = baseURL ?? 'http://localhost:3000';
+    const ticket = await apiCreateTicket(url, agent.apiKey, project.id, 'Route Test', { column: 'backlog' });
+
+    await login(page, adminKey);
+    await page.waitForSelector('.overview-table');
+
+    // Project click → /projects/:id
+    await page.locator('.overview-project-name', { hasText: projectName }).click();
+    await page.waitForSelector('#board:not(.hidden)');
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}$`));
+    await expect(page).toHaveTitle(new RegExp(projectName));
+
+    // Ticket click → /projects/:id/tickets/:ticketId
+    await page.locator('.ticket-card .ticket-title', { hasText: 'Route Test' }).click();
+    await expect(page.locator('#ticket-modal')).not.toHaveClass(/hidden/);
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}/tickets/${ticket.id}$`));
+
+    // Back closes the modal, back again returns to the overview
+    await page.goBack();
+    await expect(page.locator('#ticket-modal')).toHaveClass(/hidden/);
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}$`));
+    await page.goBack();
+    await expect(page.locator('#project-overview')).toBeVisible();
+    await expect(page).toHaveURL(/\/$/);
+
+    // Forward reopens the board
+    await page.goForward();
+    await expect(page.locator('#board')).toBeVisible();
+    await expect(page.locator('#current-project-name')).toContainText(projectName);
+
+    // Closing the modal via × also drops the ticket from the URL
+    await page.locator('.ticket-card .ticket-title', { hasText: 'Route Test' }).click();
+    await expect(page.locator('#ticket-modal')).not.toHaveClass(/hidden/);
+    await page.locator('#ticket-modal .modal-close').click();
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}$`));
+  });
+
+  test('Routing: deep links open project and ticket directly, unknown ids fall back', async ({
+    page,
+    baseURL,
+  }) => {
+    const url = baseURL ?? 'http://localhost:3000';
+    const ticket = await apiCreateTicket(url, agent.apiKey, project.id, 'Deep Link', { column: 'backlog' });
+
+    await login(page, adminKey);
+
+    await page.goto(`/projects/${project.id}/tickets/${ticket.id}`);
+    await expect(page.locator('#ticket-modal')).not.toHaveClass(/hidden/);
+    await expect(page.locator('#modal-title')).toContainText('Deep Link');
+    await expect(page.locator('#current-project-name')).toContainText(projectName);
+
+    // Closing a deep-linked modal keeps the user on the board
+    await page.locator('#ticket-modal .modal-close').click();
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}$`));
+    await expect(page.locator('#board')).toBeVisible();
+
+    // Unknown ticket → board, unknown project → overview
+    await page.goto(`/projects/${project.id}/tickets/does-not-exist`);
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}$`));
+    await expect(page.locator('#ticket-modal')).toHaveClass(/hidden/);
+    await page.goto('/projects/does-not-exist');
+    await expect(page.locator('#project-overview')).toBeVisible();
+  });
+
+  test('Routing: login redirect returns to the requested deep link', async ({ page }) => {
+    await page.goto(`/projects/${project.id}`);
+    await expect(page).toHaveURL(/\/login\.html\?next=/);
+    await page.fill('#password', adminKey);
+    await page.click('.btn-login');
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}$`));
+    await expect(page.locator('#board')).toBeVisible();
+  });
+
   // -------------------------------------------------------------------------
   // 14. Blocked reason + last-touched on cards
   // -------------------------------------------------------------------------

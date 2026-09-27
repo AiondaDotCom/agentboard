@@ -419,11 +419,18 @@ app.use((req, res, next): void => {
     return;
   }
 
-  res.redirect('/login.html');
+  // Remember the requested page (e.g. a deep link to a project) for after login
+  const returnTo = req.originalUrl === '/' ? '' : `?next=${encodeURIComponent(req.originalUrl)}`;
+  res.redirect(`/login.html${returnTo}`);
 });
 
 // Static files
 app.use(express.static(publicDir));
+
+// Client-side routes (/projects/:id, /projects/:id/tickets/:ticketId) → SPA shell
+app.get(/^\/projects(\/|$)/, (_req, res) => {
+  res.sendFile(path.join(publicDir, 'index.html'));
+});
 
 // ---------------------------------------------------------------------------
 // HTTP + WebSocket server
