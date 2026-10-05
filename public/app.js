@@ -482,6 +482,10 @@ function renderBoardColumns() {
   const board = document.getElementById('board');
   board.innerHTML = '';
   board.style.setProperty('--column-count', currentProjectColumns.length);
+  const title = document.createElement('h1');
+  title.className = 'board-project-title';
+  title.textContent = currentProjectName || '';
+  board.appendChild(title);
   currentProjectColumns.forEach(col => {
     const div = document.createElement('div');
     div.className = 'column';
