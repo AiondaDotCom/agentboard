@@ -9,6 +9,7 @@ import type { Database as DatabaseType } from 'better-sqlite3';
 import { v4 as uuidv4 } from 'uuid';
 
 import type {
+  BoardEvent,
   Agent,
   AgentPublic,
   Project,
@@ -128,6 +129,19 @@ interface RuntimeReportRow {
 // ---------------------------------------------------------------------------
 
 export class AgentboardDB {
+  logBoardEvent(event: Omit<BoardEvent, 'id' | 'timestamp'>): BoardEvent {
+    const timestamp = new Date().toISOString();
+    const result = this.db.prepare('INSERT INTO board_events (payload, timestamp) VALUES (?, ?)')
+      .run(JSON.stringify(event), timestamp);
+    return { ...event, id: Number(result.lastInsertRowid), timestamp };
+  }
+
+  getBoardEvents(before = Number.MAX_SAFE_INTEGER): BoardEvent[] {
+    const rows = this.db.prepare('SELECT id, payload, timestamp FROM board_events WHERE id < ? ORDER BY id DESC LIMIT 100')
+      .all(before) as { id: number; payload: string; timestamp: string }[];
+    return rows.map(row => ({ ...JSON.parse(row.payload) as Omit<BoardEvent, 'id' | 'timestamp'>, id: row.id, timestamp: row.timestamp }));
+  }
+
   private db: DatabaseType;
 
   constructor(dbPath?: string) {

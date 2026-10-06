@@ -1,0 +1,123 @@
+/* Shared palette for the board and sign-in screen. */
+:root {
+  --bg: #0f1219;
+  --bg-gradient: linear-gradient(145deg, #0f1219 0%, #151a28 50%, #121620 100%);
+  --surface: rgba(34, 38, 64, 0.65);
+  --surface-solid: #1c2038;
+  --surface-hover: rgba(42, 46, 74, 0.7);
+  --glass: rgba(255, 255, 255, 0.03);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --border: rgba(255, 255, 255, 0.07);
+  --border-light: rgba(255, 255, 255, 0.12);
+  --text: #eaf0f6;
+  --text-dim: #7a839a;
+  --accent: #35b8c9;
+  --accent-hover: #42d0e3;
+  --accent-glow: rgba(53, 184, 201, 0.2);
+  --accent-soft: rgba(53, 184, 201, 0.08);
+  --magenta: #c026d3;
+  --green: #34d399;
+  --orange: #f59e0b;
+  --red: #ef4444;
+  --purple: #a855f7;
+  --navy: #1e2240;
+  --column-backlog: #64748b;
+  --column-ready: #35b8c9;
+  --column-in-progress: #f59e0b;
+  --column-in-review: #c026d3;
+  --column-done: #34d399;
+  --radius: 14px;
+  --radius-sm: 8px;
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  --shadow-hover: 0 8px 40px rgba(0, 0, 0, 0.4);
+
+  --column-blocked: #ef4444;
+  --column-rework: #a855f7;
+  --dep-open: #ff5f6d;
+  --dep-done: #34d399;
+
+  color-scheme: dark;
+  --header-bg: rgba(30, 34, 64, 0.75);
+  --panel-bg: rgba(28, 32, 56, 0.7);
+  --control-bg: rgba(15, 18, 25, 0.6);
+  --control-hover: rgba(15, 18, 25, 0.8);
+  --subtle-bg: rgba(15, 18, 25, 0.4);
+  --inset-bg: rgba(0, 0, 0, 0.2);
+  --code-bg: rgba(0, 0, 0, 0.4);
+  --overlay-bg: rgba(0, 0, 0, 0.7);
+  --ghost-bg: rgba(15, 18, 25, 0.9);
+  --scroll-thumb: rgba(255, 255, 255, 0.1);
+  --scroll-thumb-hover: rgba(255, 255, 255, 0.2);
+  --success-text: #4ade80;
+  --working-text: #86efac;
+  --danger-text: #fca5a5;
+  --warning-text: #fdba74;
+  --priority-medium-text: #fde047;
+  --info-text: #7dd3fc;
+  --judgment-text: #c4b5fd;
+  --on-accent: #0f1219;
+  --group-lightness: 55%;
+  --custom-column-lightness: 65%;
+  --text-secondary: #9aa5b5;
+}
+
+/* Follow the operating system, including changes while the page is open. */
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg: #f4f7fb;
+    --bg-gradient: linear-gradient(145deg, #f8fafc 0%, #edf4f8 50%, #f4f7fb 100%);
+    --surface: rgba(255, 255, 255, 0.85);
+    --surface-solid: #ffffff;
+    --surface-hover: #edf3f8;
+    --glass: rgba(15, 35, 55, 0.035);
+    --glass-border: rgba(15, 35, 55, 0.14);
+    --border: rgba(15, 35, 55, 0.1);
+    --border-light: rgba(15, 35, 55, 0.22);
+    --text: #17263a;
+    --text-dim: #53647a;
+    --text-secondary: #53647a;
+    --accent: #087d8d;
+    --accent-hover: #066575;
+    --accent-glow: rgba(8, 125, 141, 0.15);
+    --accent-soft: rgba(8, 125, 141, 0.07);
+    --magenta: #a21caf;
+    --green: #15803d;
+    --orange: #a65309;
+    --red: #b91c1c;
+    --purple: #7e22ce;
+    --navy: #e8edf5;
+    --column-backlog: #53647a;
+    --column-ready: #087d8d;
+    --column-in-progress: #a65309;
+    --column-in-review: #a21caf;
+    --column-done: #15803d;
+    --column-blocked: #b91c1c;
+    --column-rework: #7e22ce;
+    --dep-open: #b91c1c;
+    --dep-done: #15803d;
+    --shadow: 0 4px 24px rgba(20, 40, 65, 0.09);
+    --shadow-hover: 0 8px 40px rgba(20, 40, 65, 0.14);
+    --header-bg: rgba(255, 255, 255, 0.92);
+    --panel-bg: rgba(255, 255, 255, 0.88);
+    --control-bg: #ffffff;
+    --control-hover: #f1f6fa;
+    --subtle-bg: #f1f5f9;
+    --inset-bg: #f1f5f9;
+    --code-bg: #e8eef5;
+    --overlay-bg: rgba(24, 39, 58, 0.4);
+    --ghost-bg: rgba(255, 255, 255, 0.96);
+    --scroll-thumb: rgba(40, 60, 80, 0.25);
+    --scroll-thumb-hover: rgba(40, 60, 80, 0.4);
+    --success-text: #15803d;
+    --working-text: #15803d;
+    --danger-text: #b91c1c;
+    --warning-text: #9a410b;
+    --priority-medium-text: #806000;
+    --info-text: #036987;
+    --judgment-text: #6d28d9;
+    --on-accent: #ffffff;
+    --group-lightness: 32%;
+    --custom-column-lightness: 32%;
+  }
+}

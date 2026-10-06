@@ -114,6 +114,18 @@ export const typeDefs = gql`
     hosts: [RuntimeReport!]!
   }
 
+  type BoardEvent {
+    id: ID!
+    kind: String!
+    projectId: String
+    projectName: String!
+    ticketId: String
+    ticketTitle: String!
+    actorName: String!
+    detail: String!
+    timestamp: String!
+  }
+
   type Query {
     projects: [Project!]!
     project(id: ID!): Project
@@ -121,6 +133,7 @@ export const typeDefs = gql`
   }
 
   type Subscription {
+    boardEventAdded: BoardEvent!
     ticketCreated(projectId: ID!): Ticket!
     ticketUpdated(projectId: ID!): Ticket!
     ticketMoved(projectId: ID!): Ticket!

@@ -6,26 +6,10 @@
   <title>Agentboard — Login</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/theme.css">
+  <script src="/i18n.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    :root {
-      --bg: #0f1219;
-      --bg-gradient: linear-gradient(145deg, #0f1219 0%, #151a28 50%, #121620 100%);
-      --surface: rgba(34, 38, 64, 0.65);
-      --glass-border: rgba(255, 255, 255, 0.08);
-      --border: rgba(255, 255, 255, 0.07);
-      --border-light: rgba(255, 255, 255, 0.12);
-      --text: #eaf0f6;
-      --text-dim: #7a839a;
-      --accent: #35b8c9;
-      --accent-hover: #42d0e3;
-      --accent-glow: rgba(53, 184, 201, 0.2);
-      --red: #ef4444;
-      --radius: 14px;
-      --radius-sm: 8px;
-      --shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
-    }
 
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -108,13 +92,15 @@
       margin-bottom: 6px;
     }
 
+    select { width: 100%; padding: 10px; color: var(--text); background: var(--control-bg); border: 1px solid var(--border-light); border-radius: var(--radius-sm); font: inherit; }
+
     input {
       width: 100%;
       padding: 12px 14px;
       font-family: inherit;
       font-size: 16px;
       color: var(--text);
-      background: rgba(15, 18, 25, 0.6);
+      background: var(--control-bg);
       border: 1px solid var(--border-light);
       border-radius: var(--radius-sm);
       outline: none;
@@ -137,7 +123,7 @@
       font-family: inherit;
       font-size: 14px;
       font-weight: 600;
-      color: #0f1219;
+      color: var(--on-accent);
       background: var(--accent);
       border: none;
       border-radius: var(--radius-sm);
@@ -169,20 +155,21 @@
   <div class="login-card">
     <div class="login-header">
       <div class="login-logo">Agentboard</div>
-      <h1 class="login-title">Sign in</h1>
-      <p class="login-subtitle">Enter your admin key to access the board</p>
+      <h1 class="login-title" data-i18n="Sign in">Sign in</h1>
+      <p class="login-subtitle" data-i18n="Enter your admin key to access the board">Enter your admin key to access the board</p>
     </div>
 
+    <div class="form-group"><label for="login-language">Language / Sprache</label><select id="login-language" data-language-select><option value="en">English</option><option value="de">Deutsch</option></select></div>
     <form id="login-form" autocomplete="on">
       <div class="form-group" style="position:absolute;left:-9999px;opacity:0;height:0;overflow:hidden;">
-        <label for="username">User</label>
+        <label for="username" data-i18n="User">User</label>
         <input type="text" id="username" name="username" value="admin" autocomplete="username" tabindex="-1" readonly>
       </div>
       <div class="form-group">
-        <label for="password">Admin Key</label>
+        <label for="password" data-i18n="Admin Key">Admin Key</label>
         <input type="password" id="password" name="password" autocomplete="current-password" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" required autofocus>
       </div>
-      <button type="submit" class="btn-login" id="btn-login">Sign in</button>
+      <button type="submit" class="btn-login" id="btn-login" data-i18n="Sign in">Sign in</button>
       <div id="error" class="error-msg"></div>
     </form>
   </div>
@@ -197,7 +184,7 @@
       e.preventDefault();
       errorEl.textContent = '';
       btn.disabled = true;
-      btn.textContent = 'Signing in...';
+      btn.textContent = i18n.t('Signing in...');
 
       try {
         const res = await fetch('/api/auth/login', {
@@ -212,13 +199,13 @@
           window.location.href = next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
         } else {
           const data = await res.json();
-          errorEl.textContent = data.error || 'Invalid key';
+          errorEl.textContent = i18n.t(data.error || 'Invalid key');
         }
       } catch {
-        errorEl.textContent = 'Connection failed';
+        errorEl.textContent = i18n.t('Connection failed');
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Sign in';
+        btn.textContent = i18n.t('Sign in');
       }
     });
   </script>

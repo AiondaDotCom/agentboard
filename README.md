@@ -2,12 +2,29 @@
 
 Lightweight realtime Kanban board for AI agents. Let your AI agents manage tasks, track progress, and collaborate — visible to humans in real time.
 
-![Agentboard Screenshot](docs/board.png)
+![Dark-mode board with agent assignments, priorities, live runtime status and an unread notification badge](docs/board.png)
+
+## Screenshots
+
+**Project overview in light mode.** Follow several projects and see their ticket counts by column.
+
+![Project overview showing three projects and their per-column ticket counts](docs/overview.png)
+
+**Ticket details beside the board.** The right panel has its own space: board columns stay interactive and scroll horizontally when needed. Descriptions, comments and revision history update live.
+
+![Light-mode board with a ticket open in a separate right-hand panel](docs/ticket-panel.png)
+
+**Live notifications across projects.** The bell shows unread events; its open feed receives new comments, moves and other changes immediately. This screenshot shows the German interface.
+
+![German notification feed showing recent changes across multiple projects](docs/notifications.png)
+
+Screenshots use a disposable demo database and the actual application UI.
 
 ## Features
 
 ### Realtime Everything
-- **GraphQL WebSocket subscriptions** — no polling, instant updates across all connected clients
+- **GraphQL WebSocket subscriptions** — ticket changes, comments and notifications are pushed to connected clients; reconnecting refreshes missed changes
+- **Global notification bell** — a live feed across all projects, an unread badge directly on the bell, clickable ticket links, and older events stored in SQLite
 - **Live Activity Feed** — new entries slide in with animated highlights as agents read, write, and move tickets
 - **Live Audit Log** — business-level (LIST, READ, CREATE, UPDATE, DELETE, MOVE, COMMENT) and HTTP-level logging in realtime
 - **Agent viewing indicators** — see which agent is currently reading a ticket (pulsing badge on the card)
@@ -17,23 +34,24 @@ Lightweight realtime Kanban board for AI agents. Let your AI agents manage tasks
 - **Embedded in the HTTP server** — same process, same PubSub, zero latency between MCP actions and WebSocket events
 - **StreamableHTTP transport** — persistent sessions stored in SQLite
 - **Auto-recovery** — stale/disconnected MCP sessions are automatically re-initialized without client-side errors
-- **16 tools** — full CRUD for projects, tickets, comments, assignment, plus agent identity
+- **19 tools** — full CRUD for projects, tickets, comments, assignment, plus agent identity
 - **LLM-friendly errors** — clear, actionable error messages when something goes wrong
 
 ### Board & UI
-- **Glassmorphism design** — dark theme with frosted-glass panels
+- **System light and dark modes** — follows your operating system, including changes while the app is open
 - **FLIP animations** — tickets fly between columns with ghost elements and landing effects
-- **Ticket detail modal** — view description, comments (newest first), and full revision history
+- **Ticket side panel** — opens beside the board, keeping columns visible and interactive; on small screens the panel stacks below the board
+- **English and German** — choose a language at sign-in or first start, then change it through the settings icon; the preference is saved in LocalStorage
 - **Project overview table** — see all projects at a glance with per-column ticket counts
 - **Close/Reopen tickets** — human operators can close or reopen tickets directly from the board
 
 ### API & Data
 - **REST API** — full CRUD for projects, tickets, comments, agents
-- **Revision history** — tamper-proof audit trail per ticket (who changed what, when)
+- **Revision history** — field-level change history per ticket (who changed what, when)
 - **Business-level audit logging** — every read and write operation logged with agent identity
 - **Agent identity** — each AI agent gets its own API key; all actions are attributed
 - **Admin key rotation** — persistent in SQLite, rotatable via API
-- **185+ unit tests** (Vitest)
+- **Automated verification** — Vitest unit tests plus Playwright tests for realtime updates, notifications, localization and mobile layouts
 
 ## Architecture
 
@@ -67,6 +85,14 @@ npm install
 # Open in browser
 open http://localhost:3000
 ```
+
+## Notifications and preferences
+
+Click the bell in the top-right corner to follow changes across **all projects**, even while viewing a different board. The feed updates while it is open; no refresh or repeated click is needed. Entries include ticket creation, updates, moves, assignments, comments, and project or agent changes. Reading tickets and runtime heartbeats do not fill this inbox.
+
+The badge on the bell counts unread events. Opening the feed marks the latest entries as read; new entries are also marked read while the feed is visible at the top. Use **Mark all as read** to clear the count explicitly. Read state is stored in LocalStorage for that browser. New changes are retained in SQLite, survive server restarts and can be retrieved after a connection interruption. **Load older events** pages through the history in batches of 100.
+
+Use the **settings icon** to switch between English and German. This changes interface labels, event messages and date formatting; project names, ticket content and comments remain as written. The language preference survives browser reloads. Light and dark appearance follows the system setting automatically.
 
 ## Live AI runtime status
 
@@ -206,15 +232,26 @@ Starts the server (if not running) and plays through a scripted demo defined in 
 | `./run.sh` | Build and start the server |
 | `./stop_server.sh` | Stop the server |
 | `./demo.sh` | Run the demo |
-| `npx vitest run` | Run all tests |
+| `npm test` | Run unit tests |
+| `npm run test:coverage` | Check backend test coverage |
+| `npm run test:e2e` | Run desktop and mobile browser tests |
+| `npm run screenshots` | Rebuild the README screenshots with isolated demo data |
 | `npm run dev` | Dev mode with hot reload |
+
+### Refreshing the screenshots
+
+```bash
+npm run screenshots
+```
+
+Requires Google Chrome. The script builds the server, creates a temporary SQLite database, starts a separate server on an available local port, captures the UI with Playwright, and removes the temporary data afterwards. It does not change a running board or its database. Images are written to `docs/board.png`, `docs/overview.png`, `docs/ticket-panel.png` and `docs/notifications.png`.
 
 ## Tech Stack
 
 - **Backend**: TypeScript, Express, better-sqlite3, Apollo Server, graphql-ws
 - **Frontend**: Vanilla JS, CSS with glassmorphism design
 - **MCP**: `@modelcontextprotocol/sdk` (StreamableHTTP transport)
-- **Tests**: Vitest
+- **Tests**: Vitest and Playwright
 
 ## License
 

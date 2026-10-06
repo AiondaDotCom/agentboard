@@ -4,28 +4,128 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Agentboard</title>
+  <link rel="stylesheet" href="/theme.css">
+  <script src="/i18n.js"></script>
   <link rel="stylesheet" href="/style.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
   <header>
     <div class="header-left">
-      <a href="/" class="logo-link" onclick="event.preventDefault(); showOverview()" title="Back to project overview">
+      <a href="/" class="logo-link" onclick="event.preventDefault(); showOverview()" title="Back to project overview" data-i18n-title="Back to project overview">
         <img src="/aionda_logo.png" alt="Aionda" class="logo-img">
       </a>
       <span class="logo-text" onclick="showOverview()" style="cursor:pointer">AI agentboard</span>
     </div>
     <div class="header-right">
       <span id="current-project-name" class="current-project-name" style="display:none" onclick="showOverview()"></span>
-      <button id="edit-columns-btn" class="btn-small btn-edit-columns" style="display:none" onclick="openColumnsModal()" title="Configure the board columns of this project">&#9881;&#65039; Columns</button>
-      <span id="runtime-status" class="runtime-status runtime-offline" title="No current runtime heartbeat"><span class="runtime-dot"></span><span id="runtime-status-text">0 AIs working</span></span>
-      <span id="agent-count" class="badge" onclick="openAgentsModal()" title="Show registered agents &amp; API keys">0 agents</span>
-      <button id="logout-btn" class="btn-logout" onclick="logout()" title="Sign out">Sign out</button>
+      <button id="edit-columns-btn" data-i18n="⚙ Columns" class="btn-small btn-edit-columns" style="display:none" onclick="openColumnsModal()" title="Configure the board columns of this project" data-i18n-title="Configure the board columns of this project">&#9881;&#65039; Columns</button>
+      <span id="runtime-status" class="runtime-status runtime-offline" title="No current runtime heartbeat" data-i18n-title="No current runtime heartbeat"><span class="runtime-dot"></span><span id="runtime-status-text" data-i18n="0 AIs working">0 AIs working</span></span>
+      <span id="agent-count" class="badge" onclick="openAgentsModal()" title="Show registered agents &amp; API keys" data-i18n-title="Show registered agents &amp; API keys">0 agents</span>
+      <button id="settings-toggle" class="settings-toggle btn-small" aria-label="Settings" title="Settings" data-i18n-aria-label="Settings" data-i18n-title="Settings" aria-haspopup="dialog" aria-controls="settings-dialog" aria-expanded="false"><span aria-hidden="true">&#9881;</span></button>
+      <button id="notifications-toggle" class="notification-bell btn-small" aria-label="Notifications" aria-controls="notifications-panel" aria-expanded="false" data-i18n-aria-label="Notifications">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
+        <span id="notification-count" class="notification-count" hidden></span>
+      </button>
+      <button id="logout-btn" class="btn-logout" onclick="logout()" title="Sign out" data-i18n-title="Sign out" data-i18n="Sign out">Sign out</button>
     </div>
   </header>
 
+  <section id="notifications-panel" class="notifications-panel" role="dialog" aria-labelledby="notifications-title" hidden>
+    <div class="notifications-header"><div><h2 id="notifications-title" data-i18n="Notifications">Notifications</h2><p id="notifications-status" data-i18n="All projects · live">All projects · live</p></div><button id="notifications-close" class="btn-small" aria-label="Close dialog" data-i18n-aria-label="Close dialog">×</button></div>
+    <div class="notifications-actions"><button id="notifications-read" class="btn-small" data-i18n="Mark all as read">Mark all as read</button></div>
+    <div id="notification-list" class="notification-list"></div>
+    <button id="notifications-more" class="btn-small" data-i18n="Load older events">Load older events</button>
+    <button id="notifications-retry" class="btn-small" data-i18n="Could not load events. Retry" hidden>Could not load events. Retry</button>
+  </section>
+  <div id="notification-announcement" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+  <dialog id="settings-dialog" class="language-welcome settings-dialog" aria-labelledby="settings-title">
+    <div class="settings-heading"><h2 id="settings-title" data-i18n="Settings">Settings</h2><button id="settings-close" class="btn-small" aria-label="Close dialog" data-i18n-aria-label="Close dialog">×</button></div>
+    <label for="ui-language" data-i18n="Language">Language</label>
+    <select id="ui-language" data-language-select aria-label="Language" data-i18n-aria-label="Language"><option value="en">English</option><option value="de">Deutsch</option></select>
+  </dialog>
+  <dialog id="language-welcome" class="language-welcome"><h2>Language / Sprache</h2><p data-i18n="Choose your language">Choose your language</p><select data-language-select aria-label="Language / Sprache"><option value="en">English</option><option value="de">Deutsch</option></select><button id="language-continue" class="btn-small" data-i18n="Continue">Continue</button></dialog>
+
   <!-- Columns are rendered dynamically from the project's column config -->
+  <div class="board-workspace">
   <main id="board" class="board hidden"></main>
+  <!-- Ticket details in the board layout -->
+  <aside id="ticket-modal" class="ticket-panel hidden" aria-labelledby="modal-title">
+    <div class="modal modal-ticket">
+      <div class="modal-header">
+        <span id="modal-ticket-id" class="modal-ticket-id"></span>
+        <button class="modal-close" aria-label="Close dialog" data-i18n-aria-label="Close dialog" onclick="closeModal()">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="modal-main">
+          <h2 id="modal-title" class="modal-title"></h2>
+          <div id="modal-blocked" class="modal-blocked" style="display:none"></div>
+
+          <div class="modal-section">
+            <div class="modal-section-label" data-i18n="Description">Description</div>
+            <div id="modal-desc" class="modal-desc markdown-body"></div>
+          </div>
+
+          <div id="modal-deps" class="modal-deps" style="display:none"></div>
+
+          <div class="modal-tabs">
+            <button class="modal-tab active" data-tab="comments" onclick="switchTab('comments')" data-i18n="Comments">Comments</button>
+            <button class="modal-tab" data-tab="history" onclick="switchTab('history')" data-i18n="History">History</button>
+          </div>
+
+          <div id="tab-comments" class="modal-tab-content">
+            <div id="modal-comments" class="modal-comments"></div>
+          </div>
+          <div id="tab-history" class="modal-tab-content hidden">
+            <div id="modal-revisions" class="modal-revisions"></div>
+          </div>
+        </div>
+
+        <aside class="modal-side">
+          <div class="modal-side-panel">
+            <div class="modal-side-title" data-i18n="Details">Details</div>
+            <div class="modal-side-row" data-row="project">
+              <span class="modal-side-label" data-i18n="Project">Project</span>
+              <span class="modal-side-value">
+                <select id="modal-project-select" class="modal-project-select" title="Move this ticket to another project" data-i18n-title="Move this ticket to another project"></select>
+              </span>
+            </div>
+            <div class="modal-side-row" data-row="status">
+              <span class="modal-side-label" data-i18n="Status">Status</span>
+              <span class="modal-side-value"><span id="modal-column-badge" class="modal-column-badge"></span></span>
+            </div>
+            <div class="modal-side-row" data-row="priority">
+              <span class="modal-side-label" data-i18n="Priority">Priority</span>
+              <span class="modal-side-value"><span id="modal-priority" class="modal-priority"></span></span>
+            </div>
+            <div class="modal-side-row" data-row="work-type">
+              <span class="modal-side-label" data-i18n="Work type">Work type</span>
+              <span class="modal-side-value"><span id="modal-work-type" class="modal-work-type hidden"></span></span>
+            </div>
+            <div class="modal-side-row" data-row="assignee">
+              <span class="modal-side-label" data-i18n="Assignee">Assignee</span>
+              <span id="modal-assignee-display" class="modal-side-value modal-assignee-display"></span>
+            </div>
+            <div class="modal-side-row" data-row="author">
+              <span class="modal-side-label" data-i18n="Author">Author</span>
+              <span id="modal-author" class="modal-side-value modal-agent"></span>
+            </div>
+            <div class="modal-side-row" data-row="group">
+              <span class="modal-side-label" data-i18n="Group">Group</span>
+              <span id="modal-group-display" class="modal-side-value modal-group-display"></span>
+            </div>
+            <div class="modal-side-row" data-row="updated">
+              <span class="modal-side-label" data-i18n="Updated">Updated</span>
+              <span id="modal-updated" class="modal-side-value modal-updated"></span>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </aside>
+
+  </div>
 
   <!-- SVG overlay for dependency arrows (click a card's dependency badge) -->
   <svg id="dep-arrows" class="dep-arrows hidden">
@@ -42,8 +142,8 @@
   <div id="loading-screen" class="loading-screen">
     <div class="loading-content">
       <div class="loading-spinner"></div>
-      <h2>Connecting...</h2>
-      <p>Waiting for agents and projects</p>
+      <h2 data-i18n="Connecting...">Connecting...</h2>
+      <p data-i18n="Waiting for agents and projects">Waiting for agents and projects</p>
     </div>
   </div>
 
@@ -52,14 +152,14 @@
       <table class="overview-table">
         <thead>
           <tr>
-            <th class="col-name">Project</th>
-            <th class="col-columns">Columns</th>
-            <th class="col-total">Total</th>
+            <th class="col-name" data-i18n="Project">Project</th>
+            <th class="col-columns" data-i18n="Columns">Columns</th>
+            <th class="col-total" data-i18n="Total">Total</th>
           </tr>
         </thead>
         <tbody id="overview-tbody"></tbody>
       </table>
-      <div id="overview-empty" class="overview-empty" style="display:none">
+      <div id="overview-empty" class="overview-empty" style="display:none" data-i18n="No projects yet. An AI agent will create one via the API.">
         No projects yet. An AI agent will create one via the API.
       </div>
     </div>
@@ -67,7 +167,7 @@
 
   <footer id="activity-feed" class="activity-feed hidden">
     <div class="activity-header">
-      <span>ACTIVITY FEED</span>
+      <span data-i18n="ACTIVITY FEED">ACTIVITY FEED</span>
       <span id="activity-count">0 events</span>
     </div>
     <div id="activity-list" class="activity-list"></div>
@@ -75,105 +175,28 @@
 
   <div id="audit-panel" class="audit-panel hidden">
     <div class="audit-header">
-      <span>AUDIT LOG</span>
-      <button id="audit-toggle" class="btn-small">Show</button>
+      <span data-i18n="AUDIT LOG">AUDIT LOG</span>
+      <button id="audit-toggle" class="btn-small" data-i18n="Show">Show</button>
     </div>
     <div id="audit-list" class="audit-list hidden"></div>
-  </div>
-
-  <!-- Ticket Detail Modal -->
-  <div id="ticket-modal" class="modal-overlay hidden" onclick="closeModal(event)">
-    <div class="modal modal-ticket" onclick="event.stopPropagation()">
-      <div class="modal-header">
-        <span id="modal-ticket-id" class="modal-ticket-id"></span>
-        <button class="modal-close" aria-label="Close dialog" onclick="closeModal()">&times;</button>
-      </div>
-
-      <div class="modal-body">
-        <div class="modal-main">
-          <h2 id="modal-title" class="modal-title"></h2>
-          <div id="modal-blocked" class="modal-blocked" style="display:none"></div>
-
-          <div class="modal-section">
-            <div class="modal-section-label">Description</div>
-            <div id="modal-desc" class="modal-desc markdown-body"></div>
-          </div>
-
-          <div id="modal-deps" class="modal-deps" style="display:none"></div>
-
-          <div class="modal-tabs">
-            <button class="modal-tab active" data-tab="comments" onclick="switchTab('comments')">Comments</button>
-            <button class="modal-tab" data-tab="history" onclick="switchTab('history')">History</button>
-          </div>
-
-          <div id="tab-comments" class="modal-tab-content">
-            <div id="modal-comments" class="modal-comments"></div>
-          </div>
-          <div id="tab-history" class="modal-tab-content hidden">
-            <div id="modal-revisions" class="modal-revisions"></div>
-          </div>
-        </div>
-
-        <aside class="modal-side">
-          <div class="modal-side-panel">
-            <div class="modal-side-title">Details</div>
-            <div class="modal-side-row" data-row="project">
-              <span class="modal-side-label">Project</span>
-              <span class="modal-side-value">
-                <select id="modal-project-select" class="modal-project-select" title="Move this ticket to another project"></select>
-              </span>
-            </div>
-            <div class="modal-side-row" data-row="status">
-              <span class="modal-side-label">Status</span>
-              <span class="modal-side-value"><span id="modal-column-badge" class="modal-column-badge"></span></span>
-            </div>
-            <div class="modal-side-row" data-row="priority">
-              <span class="modal-side-label">Priority</span>
-              <span class="modal-side-value"><span id="modal-priority" class="modal-priority"></span></span>
-            </div>
-            <div class="modal-side-row" data-row="work-type">
-              <span class="modal-side-label">Work type</span>
-              <span class="modal-side-value"><span id="modal-work-type" class="modal-work-type hidden"></span></span>
-            </div>
-            <div class="modal-side-row" data-row="assignee">
-              <span class="modal-side-label">Assignee</span>
-              <span id="modal-assignee-display" class="modal-side-value modal-assignee-display"></span>
-            </div>
-            <div class="modal-side-row" data-row="author">
-              <span class="modal-side-label">Author</span>
-              <span id="modal-author" class="modal-side-value modal-agent"></span>
-            </div>
-            <div class="modal-side-row" data-row="group">
-              <span class="modal-side-label">Group</span>
-              <span id="modal-group-display" class="modal-side-value modal-group-display"></span>
-            </div>
-            <div class="modal-side-row" data-row="updated">
-              <span class="modal-side-label">Updated</span>
-              <span id="modal-updated" class="modal-side-value modal-updated"></span>
-            </div>
-          </div>
-        </aside>
-      </div>
-    </div>
   </div>
 
   <!-- Columns Editor Modal -->
   <div id="columns-modal" class="modal-overlay hidden" onclick="closeColumnsModal(event)">
     <div class="modal" onclick="event.stopPropagation()">
       <div class="modal-header">
-        <div><span class="modal-title" style="font-size:18px">Board Columns</span></div>
-        <button class="modal-close" aria-label="Close dialog" onclick="closeColumnsModal()">&times;</button>
+        <div><span class="modal-title" style="font-size:18px" data-i18n="Board Columns">Board Columns</span></div>
+        <button class="modal-close" aria-label="Close dialog" data-i18n-aria-label="Close dialog" onclick="closeColumnsModal()">&times;</button>
       </div>
-      <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px">
-        Configure the columns of this board. The <strong>first</strong> column is where new tickets land,
-        the <strong>last</strong> column counts as finished. Columns that still contain tickets cannot be removed.
+      <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px" data-i18n="Configure the columns of this board. The first column is where new tickets land, the last column counts as finished. Columns that still contain tickets cannot be removed.">
+        Configure the columns of this board. The first column is where new tickets land, the last column counts as finished. Columns that still contain tickets cannot be removed.
       </p>
       <div id="columns-editor-list" class="columns-editor-list"></div>
-      <button class="btn-small" onclick="addColumnRow()">+ Add column</button>
+      <button class="btn-small" onclick="addColumnRow()" data-i18n="+ Add column">+ Add column</button>
       <div id="columns-error" class="columns-error" style="display:none"></div>
       <div class="columns-editor-actions">
-        <button class="btn-small" onclick="closeColumnsModal()">Cancel</button>
-        <button class="btn-small btn-save-columns" onclick="saveColumns()">Save</button>
+        <button class="btn-small" onclick="closeColumnsModal()" data-i18n="Cancel">Cancel</button>
+        <button class="btn-small btn-save-columns" onclick="saveColumns()" data-i18n="Save">Save</button>
       </div>
     </div>
   </div>
@@ -182,14 +205,15 @@
   <div id="agents-modal" class="modal-overlay hidden" onclick="closeAgentsModal(event)">
     <div class="modal" onclick="event.stopPropagation()">
       <div class="modal-header">
-        <div><span class="modal-title" style="font-size:18px">Registered Agents</span></div>
-        <button class="modal-close" aria-label="Close dialog" onclick="closeAgentsModal()">&times;</button>
+        <div><span class="modal-title" style="font-size:18px" data-i18n="Registered Agents">Registered Agents</span></div>
+        <button class="modal-close" aria-label="Close dialog" data-i18n-aria-label="Close dialog" onclick="closeAgentsModal()">&times;</button>
       </div>
-      <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px">Copy an API key and share it with the agent so it can authenticate via <code style="color:var(--accent)">X-Api-Key</code> header.</p>
+      <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px" data-i18n="Copy an API key and share it with the agent so it can authenticate via X-Api-Key header.">Copy an API key and share it with the agent so it can authenticate via X-Api-Key header.</p>
       <div id="agents-list" class="agents-list"></div>
     </div>
   </div>
 
   <script src="/app.js"></script>
+  <script src="/notifications.js"></script>
 </body>
 </html>

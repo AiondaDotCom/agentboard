@@ -3,8 +3,13 @@
 // ---------------------------------------------------------------------------
 
 const API_BASE = '';
+const t = (key, values) => i18n.t(key, values);
 let currentProjectId = null;
 let ws = null;
+let reconnectTimer = null;
+let boardLoadVersion = 0;
+let modalLoadVersion = 0;
+let modalTarget = null;
 let agents = {};
 let activities = [];
 let runtimePollTimer = null;
@@ -98,7 +103,13 @@ function doneColumnId() {
 function columnTitle(colId, columns) {
   const cols = columns || currentProjectColumns;
   const col = cols.find(c => c.id === colId);
-  return col ? col.title : colId.replace(/_/g, ' ');
+  return col ? localizedColumnTitle(col) : colId.replace(/_/g, ' ');
+}
+
+// Translate built-in labels only; custom names are user content.
+function localizedColumnTitle(col) {
+  const defaults = { backlog: 'Backlog', ready: 'Ready', blocked: 'Blocked', in_progress: 'In Progress', rework: 'Rework', in_review: 'In Review', done: 'Done' };
+  return col.title === defaults[col.id] ? t(col.title) : col.title;
 }
 
 // Well-known column ids keep their theme color; custom ones get a stable hue.
@@ -113,7 +124,7 @@ const KNOWN_COLUMN_COLORS = {
 };
 
 function columnColor(colId) {
-  return KNOWN_COLUMN_COLORS[colId] || `hsl(${groupHue(colId)}, 70%, 65%)`;
+  return KNOWN_COLUMN_COLORS[colId] || `hsl(${groupHue(colId)}, 70%, var(--custom-column-lightness))`;
 }
 
 // Ticket priorities: weight for sorting (higher = more urgent, shown on top)
@@ -125,13 +136,14 @@ const PRIORITY_META = {
 };
 
 function priorityMeta(priority) {
-  return PRIORITY_META[priority] || PRIORITY_META.medium;
+  const meta = PRIORITY_META[priority] || PRIORITY_META.medium;
+  return { ...meta, label: t(meta.label) };
 }
 
 function priorityBadge(ticket, cssClass) {
   const p = ticket.priority || 'medium';
   const meta = priorityMeta(p);
-  return `<span class="${cssClass} prio-${p}" title="Priority: ${meta.label}">${meta.icon} ${meta.label}</span>`;
+  return `<span class="${cssClass} prio-${p}" title="${t('Priority')}: ${meta.label}">${meta.icon} ${t(meta.label)}</span>`;
 }
 
 // Work type: what KIND of work a ticket is – decides who can take it.
@@ -152,7 +164,7 @@ const WORK_TYPE_META = {
 function workTypeBadge(ticket, cssClass) {
   const meta = WORK_TYPE_META[ticket.workType];
   if (!meta) return '';
-  return `<span class="${cssClass} work-${ticket.workType}" title="${meta.label}: ${meta.hint}">${meta.icon} ${meta.label}</span>`;
+  return `<span class="${cssClass} work-${ticket.workType}" title="${t(meta.label)}: ${t(meta.hint)}">${meta.icon} ${t(meta.label)}</span>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -241,14 +253,14 @@ async function loadProjectOverview() {
     const { counts, total } = JSON.parse(newStats[p.id]);
     const chips = cols.map(c => `
       <span class="stat-chip${counts[c.id] === 0 ? ' zero' : ''}" style="--chip-color:${columnColor(c.id)}">
-        <span class="stat-chip-label">${escapeHtml(c.title)}</span>
+        <span class="stat-chip-label">${escapeHtml(localizedColumnTitle(c))}</span>
         <span class="overview-count">${counts[c.id]}</span>
       </span>`).join('');
 
     return `
       <td>
         <div class="overview-project-name">${escapeHtml(p.name)}</div>
-        <div class="overview-project-id" title="Click to copy full ID" onclick="event.stopPropagation(); copyId('${p.id}', this)">#${p.id.slice(0, 8)}</div>
+        <div class="overview-project-id" title="${t('Click to copy full ID')}" onclick="event.stopPropagation(); copyId('${p.id}', this)">#${p.id.slice(0, 8)}</div>
         ${p.description ? `<div class="overview-project-desc">${escapeHtml(p.description)}</div>` : ''}
       </td>
       <td class="overview-cols">${chips}</td>
@@ -306,21 +318,13 @@ async function loadAgents() {
   const agentList = await fetchJSON('/api/agents');
   agents = {};
   agentList.forEach(a => { agents[a.id] = a; });
-  document.getElementById('agent-count').textContent = `${agentList.length} agent${agentList.length !== 1 ? 's' : ''}`;
+  document.getElementById('agent-count').textContent = t(agentList.length === 1 ? '{count} agent' : '{count} agents', { count: agentList.length });
 }
 
 function formatWorkingDuration(totalSeconds) {
   const seconds = Math.max(0, Math.floor(totalSeconds));
-  if (seconds < 60) return `${seconds} second${seconds === 1 ? '' : 's'}`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'}`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'}`;
-  const days = Math.floor(hours / 24);
-  const remainingHours = hours % 24;
-  const dayText = `${days} day${days === 1 ? '' : 's'}`;
-  if (remainingHours === 0) return dayText;
-  return `${dayText} and ${remainingHours} hour${remainingHours === 1 ? '' : 's'}`;
+  const [value, unit] = seconds < 60 ? [seconds, 'second'] : seconds < 3600 ? [Math.floor(seconds / 60), 'minute'] : seconds < 86400 ? [Math.floor(seconds / 3600), 'hour'] : [Math.floor(seconds / 86400), 'day'];
+  return new Intl.NumberFormat(i18n.language, { style: 'unit', unit, unitDisplay: 'long' }).format(value);
 }
 
 function renderRuntimeStatus(status) {
@@ -328,22 +332,21 @@ function renderRuntimeStatus(status) {
   const text = document.getElementById('runtime-status-text');
   el.classList.remove('runtime-working', 'runtime-idle', 'runtime-offline');
   const hostDetails = status.hosts.map(host =>
-    `${host.host}: ${host.workingCodex} Codex + ${host.workingClaude} Claude + ${host.workingOpenCode} OpenCode + ${host.workingCursor} Cursor working, ${host.idleCodex + host.idleClaude + host.idleOpenCode + host.idleCursor} idle`
+    `${host.host}: ${host.workingCodex} Codex + ${host.workingClaude} Claude + ${host.workingOpenCode} OpenCode + ${host.workingCursor} Cursor ${t('working')}, ${t('{count} idle', { count: host.idleCodex + host.idleClaude + host.idleOpenCode + host.idleCursor })}`
   ).join('\n');
   if (status.working > 0) {
     el.classList.add('runtime-working');
     const elapsed = status.workingSince
       ? Math.max(0, Math.floor((Date.now() - Date.parse(status.workingSince)) / 1000))
       : status.workingForSeconds;
-    const since = ` since ${formatWorkingDuration(elapsed)}`;
-    text.textContent = `${status.working} AI${status.working === 1 ? '' : 's'} working${since}`;
+    text.textContent = t(status.working === 1 ? '{count} AI working since {duration}' : '{count} AIs working since {duration}', { count: status.working, duration: formatWorkingDuration(elapsed) });
   } else {
     el.classList.add(status.hosts.length ? 'runtime-idle' : 'runtime-offline');
-    text.textContent = '0 AIs working';
+    text.textContent = t('0 AIs working');
   }
   el.title = status.hosts.length
-    ? `${status.codexWorking} Codex, ${status.claudeWorking} Claude, ${status.openCodeWorking} OpenCode, ${status.cursorWorking} Cursor working; ${status.idle} idle${status.workingSince ? `\nWorking non-stop since ${new Date(status.workingSince).toLocaleString()}` : ''}\n${hostDetails}`
-    : 'No current runtime heartbeat from cortex';
+    ? `${status.codexWorking} Codex, ${status.claudeWorking} Claude, ${status.openCodeWorking} OpenCode, ${status.cursorWorking} Cursor ${t('working')}; ${t('{count} idle', { count: status.idle })}${status.workingSince ? `\n${t('Working non-stop since {date}', { date: new Date(status.workingSince).toLocaleString(i18n.language) })}` : ''}\n${hostDetails}`
+    : t('No current runtime heartbeat from cortex');
 }
 
 async function loadRuntimeStatus() {
@@ -356,12 +359,13 @@ async function loadRuntimeStatus() {
     runtimeStatusSnapshot = null;
     el.classList.remove('runtime-working', 'runtime-idle');
     el.classList.add('runtime-offline');
-    text.textContent = 'AI status offline';
-    el.title = 'Runtime status API is unavailable';
+    text.textContent = t('AI status offline');
+    el.title = t('Runtime status API is unavailable');
   }
 }
 
 async function loadBoard(projectId) {
+  const version = ++boardLoadVersion;
   // Fetch all pages to ensure every column is populated
   let allTickets = [];
   let page = 1;
@@ -371,7 +375,8 @@ async function loadBoard(projectId) {
     if (page >= result.total_pages) break;
     page++;
   }
-  renderBoard(allTickets);
+  if (version !== boardLoadVersion || projectId !== currentProjectId) return;
+  renderBoard(allTickets, { preserveScroll: true });
   // Update snapshot after render so next diff works
   prevTicketState = snapshotTicketPositions();
   prevGroupState = snapshotGroupPositions();
@@ -397,11 +402,13 @@ let prevTicketState = new Map();
 
 function snapshotTicketPositions() {
   const snap = new Map();
-  document.querySelectorAll('.ticket-card').forEach(card => {
+  const ticketsById = new Map(boardTickets.map(ticket => [ticket.id, ticket]));
+  document.querySelectorAll('.ticket-card[data-ticket-id]').forEach(card => {
     const id = card.dataset.ticketId;
     const col = card.closest('.column')?.dataset.column;
     if (id && col) {
       snap.set(id, {
+        signature: JSON.stringify(ticketsById.get(id)),
         column: col,
         rect: card.getBoundingClientRect(),
         title: card.querySelector('.ticket-title')?.textContent || '',
@@ -465,8 +472,8 @@ function createGroupWrapper(group, claimer) {
   wrap.style.setProperty('--group-hue', groupHue(group));
   wrap.innerHTML = `
     <div class="group-header">
-      <span class="group-name" title="Ticket group – one agent works on all of these">&#x26D3;&#xFE0F; ${escapeHtml(group)}</span>
-      <span class="group-claim ${claimer ? 'claimed' : 'free'}">${claimer ? `&#x1f512; ${escapeHtml(claimer.name)}` : 'free'}</span>
+      <span class="group-name" title="${t('Ticket group – one agent works on all of these')}">&#x26D3;&#xFE0F; ${escapeHtml(group)}</span>
+      <span class="group-claim ${claimer ? 'claimed' : t('free')}">${claimer ? `&#x1f512; ${escapeHtml(claimer.name)}` : t('free')}</span>
     </div>
     <div class="group-tickets"></div>
   `;
@@ -493,7 +500,7 @@ function renderBoardColumns() {
     div.style.setProperty('--col-color', columnColor(col.id));
     div.innerHTML = `
       <div class="column-header">
-        <span class="column-title">${escapeHtml(col.title.toUpperCase())}</span>
+        <span class="column-title">${escapeHtml(localizedColumnTitle(col).toUpperCase())}</span>
         <span class="column-count">0</span>
       </div>
       <div class="ticket-list"></div>
@@ -522,10 +529,10 @@ function renderBoard(tickets, { preserveScroll = false } = {}) {
   const oldState = prevTicketState;
   const oldIds = new Set(oldState.keys());
 
-  // Detect moves, new tickets, and in-place changes (group / assignee)
+  // Detect moves, new tickets, and changes to any ticket field or comment count
   const moved = [];   // { id, fromCol, toCol, oldRect, title }
   const created = [];  // ticket ids
-  const changed = [];  // ticket ids whose group or assignee changed in place
+  const changed = [];  // ticket ids changed in place
 
   tickets.forEach(t => {
     const old = oldState.get(t.id);
@@ -533,7 +540,7 @@ function renderBoard(tickets, { preserveScroll = false } = {}) {
       moved.push({ id: t.id, fromCol: old.column, toCol: t.column, oldRect: old.rect, title: old.title });
     } else if (!oldIds.has(t.id)) {
       created.push(t.id);
-    } else if (old && (old.group !== (t.group || '') || old.assignee !== (t.assigneeId || ''))) {
+    } else if (old && (old.signature !== JSON.stringify(t))) {
       changed.push(t.id);
     }
   });
@@ -542,6 +549,24 @@ function renderBoard(tickets, { preserveScroll = false } = {}) {
   const groupClaims = computeGroupClaims(tickets);
   const oldGroupState = prevGroupState;
   const newGroupKeys = new Set();
+
+  // Keep a fading copy of removed cards while the board updates immediately.
+  const remainingIds = new Set(tickets.map(ticket => ticket.id));
+  oldState.forEach((old, id) => {
+    if (remainingIds.has(id)) return;
+    const card = document.querySelector(`[data-ticket-id="${id}"]`);
+    if (!card) return;
+    const ghost = card.cloneNode(true);
+    ghost.removeAttribute('data-ticket-id');
+    ghost.className = 'ticket-card ticket-removal animate-depart';
+    Object.assign(ghost.style, {
+      position: 'fixed', left: `${old.rect.left}px`, top: `${old.rect.top}px`,
+      width: `${old.rect.width}px`, pointerEvents: 'none', zIndex: '100',
+    });
+    document.body.appendChild(ghost);
+    ghost.addEventListener('animationend', () => ghost.remove(), { once: true });
+    setTimeout(() => ghost.remove(), 500);
+  });
 
   // 2. Render the new board (tickets of the same group cluster together)
   columns.forEach(col => {
@@ -570,7 +595,7 @@ function renderBoard(tickets, { preserveScroll = false } = {}) {
         card.addEventListener('animationend', () => card.classList.remove('animate-new'), { once: true });
       }
 
-      // Flash tickets whose group or assignee changed in place
+      // Flash every changed ticket, including new comments
       if (changed.includes(t.id)) {
         card.classList.add('animate-update');
         card.addEventListener('animationend', () => card.classList.remove('animate-update'), { once: true });
@@ -600,7 +625,7 @@ function renderBoard(tickets, { preserveScroll = false } = {}) {
       const sentinel = document.createElement('div');
       sentinel.className = 'done-lazy-sentinel';
       sentinel.setAttribute('aria-label', 'More finished tickets load while scrolling');
-      sentinel.innerHTML = '<span class="done-lazy-spinner"></span>Loading more&hellip;';
+      sentinel.innerHTML = `<span class="done-lazy-spinner"></span>${t('Loading more…')}`;
       colEl.appendChild(sentinel);
 
       doneLazyLoadObserver = new IntersectionObserver(entries => {
@@ -709,28 +734,28 @@ function createTicketCard(ticket) {
   });
   const depBadge = deps.length > 0
     ? `<span class="ticket-deps ${openDeps.length > 0 ? 'deps-open' : 'deps-done'}"
-         title="Depends on ${deps.length} ticket${deps.length !== 1 ? 's' : ''} (${openDeps.length} unfinished) – click to show arrows"
+         title="${t('Depends on {count} tickets ({open} unfinished) – click to show arrows', { count: deps.length, open: openDeps.length })}"
          onclick="event.stopPropagation(); toggleDependencyArrows('${ticket.id}')">&#x2B07;&#xFE0F; ${openDeps.length > 0 ? `${openDeps.length}/${deps.length}` : deps.length}</span>`
     : '';
 
   card.innerHTML = `
-    <div class="ticket-id" title="Click to copy full ID" onclick="event.stopPropagation(); copyId('${ticket.id}', this)">#${ticket.id.slice(0, 8)}</div>
+    <div class="ticket-id" title="${t('Click to copy full ID')}" onclick="event.stopPropagation(); copyId('${ticket.id}', this)">#${ticket.id.slice(0, 8)}</div>
     <div class="ticket-title">${escapeHtml(ticket.title)}</div>
-    ${ticket.blockedReason ? `<div class="ticket-blocked" title="Blocked reason">&#x26d4; ${escapeHtml(ticket.blockedReason)}</div>` : ''}
+    ${ticket.blockedReason ? `<div class="ticket-blocked" title="${t('Blocked reason')}">&#x26d4; ${escapeHtml(ticket.blockedReason)}</div>` : ''}
     ${ticket.description ? `<div class="ticket-desc">${escapeHtml(ticket.description)}</div>` : ''}
     <div class="ticket-meta">
       ${priorityBadge(ticket, 'ticket-priority')}
       ${workTypeBadge(ticket, 'ticket-work-type')}
-      ${author ? `<span class="ticket-agent" title="Author">&#x270d;&#xfe0f; ${escapeHtml(author.name)}</span>` : '<span></span>'}
-      ${assignee ? `<span class="ticket-assignee" title="Assigned to">&#x1f527; ${escapeHtml(assignee.name)}</span>` : ''}
+      ${author ? `<span class="ticket-agent" title="${t('Author')}">&#x270d;&#xfe0f; ${escapeHtml(author.name)}</span>` : '<span></span>'}
+      ${assignee ? `<span class="ticket-assignee" title="${t('Assigned to')}">&#x1f527; ${escapeHtml(assignee.name)}</span>` : ''}
       ${depBadge}
-      ${ticket.commentCount > 0 ? `<span class="ticket-comment-count" title="${ticket.commentCount} comment${ticket.commentCount !== 1 ? 's' : ''}">&#x1f4ac; ${ticket.commentCount}</span>` : ''}
-      <span class="ticket-updated" title="Last touched">&#x1f552; ${formatTime(ticket.updatedAt)}</span>
+      ${ticket.commentCount > 0 ? `<span class="ticket-comment-count" title="${t(ticket.commentCount === 1 ? '{count} comment' : '{count} comments', { count: ticket.commentCount })}">&#x1f4ac; ${ticket.commentCount}</span>` : ''}
+      <span class="ticket-updated" title="${t('Last touched')}">&#x1f552; ${formatTime(ticket.updatedAt)}</span>
     </div>
     <div class="ticket-actions">
       ${isDone
-        ? `<button class="btn-small btn-open" onclick="event.stopPropagation(); openTicket('${ticket.projectId}', '${ticket.id}')">Reopen</button>`
-        : `<button class="btn-small btn-close" onclick="event.stopPropagation(); closeTicket('${ticket.projectId}', '${ticket.id}')">Close</button>`
+        ? `<button class="btn-small btn-open" onclick="event.stopPropagation(); openTicket('${ticket.projectId}', '${ticket.id}')">${t('Reopen')}</button>`
+        : `<button class="btn-small btn-close" onclick="event.stopPropagation(); closeTicket('${ticket.projectId}', '${ticket.id}')">${t('Close')}</button>`
       }
     </div>
   `;
@@ -817,16 +842,33 @@ window.addEventListener('scroll', clearDependencyArrows, true);
 
 window.toggleDependencyArrows = toggleDependencyArrows;
 
+function activityText(activity) {
+  if (i18n.language === 'en') return activity.details;
+  const text = activity.details || '';
+  if (activity.action === 'comment_added') return t('Comment: {body}', { body: text.replace(/^Comment: /, '') });
+  if (activity.action === 'ticket_created' || activity.action === 'ticket_read') {
+    return t(activity.action === 'ticket_created' ? 'Created ticket “{title}”' : 'Read ticket “{title}”', { title: text.replace(/^(?:Created|Read) ticket "/, '').replace(/"$/, '') });
+  }
+  if (activity.action === 'ticket_moved') {
+    const match = text.match(/^(?:Moved to |Human (?:closed|reopened) → )(.+)$/);
+    return match ? t('Moved to {column}', { column: columnTitle(match[1]) }) : t('Ticket moved');
+  }
+  if (activity.action === 'ticket_assigned') return t('Assigned to {name}', { name: text.replace(/^Assigned to /, '') });
+  if (activity.action === 'tickets_listed') return t('{count} tickets listed', { count: text.match(/Listed (\d+)/)?.[1] || '' });
+  if (activity.action === 'project_read') return t('Project read');
+  return t(text);
+}
+
 function createActivityItem(a) {
   const agent = a.agentId
-    ? (a.agent ? a.agent : (agents[a.agentId] || { name: 'unknown' }))
-    : { name: 'Human' };
+    ? (a.agent ? a.agent : (agents[a.agentId] || { name: t('unknown') }))
+    : { name: t('Human') };
   const item = document.createElement('div');
   item.className = 'activity-item';
   item.innerHTML = `
     <span class="activity-text">
       <span class="agent-name">${escapeHtml(agent.name)}</span>
-      ${escapeHtml(a.details)}
+      ${escapeHtml(activityText(a))}
     </span>
     <span class="activity-time">${formatTime(a.timestamp)}</span>
   `;
@@ -836,7 +878,7 @@ function createActivityItem(a) {
 function renderActivity() {
   const list = document.getElementById('activity-list');
   const count = document.getElementById('activity-count');
-  count.textContent = `${activities.length} events`;
+  count.textContent = t('{count} events', { count: activities.length });
   list.innerHTML = '';
 
   activities.slice(0, 50).forEach(a => {
@@ -854,7 +896,7 @@ function prependActivityEntry(a) {
   // Update count
   const count = document.getElementById('activity-count');
   const n = list.children.length;
-  count.textContent = `${n} events`;
+  count.textContent = t('{count} events', { count: n });
   // Keep max 50 entries
   while (list.children.length > 50) list.removeChild(list.lastChild);
 }
@@ -870,7 +912,7 @@ function createAuditItem(e) {
     const details = e.requestBody ? ` (${escapeHtml(e.requestBody)})` : '';
     item.innerHTML = `
       <span class="audit-method ${e.method}">${e.method}</span>
-      <span class="audit-agent">${agent ? escapeHtml(agent.name) : 'system'}</span>
+      <span class="audit-agent">${agent ? escapeHtml(agent.name) : t('system')}</span>
       <span class="audit-path">${escapeHtml(e.path)}${details}</span>
       <span class="audit-time">${formatTime(e.timestamp)}</span>
     `;
@@ -984,9 +1026,9 @@ async function renderProjectPicker(ticket) {
     if (targetId === ticket.projectId) return;
     const targetName = projects.find(p => p.id === targetId)?.name || 'that project';
     const depNote = (ticket.dependsOn || []).length > 0
-      ? '\n\nIts dependencies will be removed (dependencies cannot cross projects).'
+      ? t(' Its dependencies will be removed.')
       : '';
-    if (!confirm(`Move ticket "${ticket.title}" to project "${targetName}"?${depNote}`)) {
+    if (!confirm(t('Move ticket “{ticket}” to project “{project}”?', { ticket: ticket.title, project: targetName }) + depNote)) {
       select.value = ticket.projectId;
       return;
     }
@@ -1002,7 +1044,10 @@ async function renderProjectPicker(ticket) {
   };
 }
 
-async function openModal(projectId, ticketId, { fromRoute = false } = {}) {
+async function openModal(projectId, ticketId, { fromRoute = false, refresh = false } = {}) {
+  const version = ++modalLoadVersion;
+  modalTarget = { projectId, id: ticketId, fromRoute };
+  const previousComments = new Set([...document.querySelectorAll('.modal-comment')].map(el => el.dataset.commentId));
   const modal = document.getElementById('ticket-modal');
   let ticket, comments, revisions;
   try {
@@ -1012,27 +1057,32 @@ async function openModal(projectId, ticketId, { fromRoute = false } = {}) {
       fetchJSON(`/api/projects/${projectId}/tickets/${ticketId}/revisions`),
     ]);
   } catch (e) {
+    if (version !== modalLoadVersion) return;
+    if (refresh && e.message !== 'HTTP 404') return;
+    hideModal();
     // Unknown ticket in the URL: fall back to the board
-    if (!fromRoute) throw e;
+    if (!fromRoute && !refresh) throw e;
     navigate(projectPath(projectId), { replace: true });
     return;
   }
+  if (version !== modalLoadVersion || projectId !== currentProjectId) return;
   if (!ticket || !ticket.id) {
     if (fromRoute) navigate(projectPath(projectId), { replace: true });
     return;
   }
 
   currentModalTicket = ticket;
-  if (!fromRoute) {
-    navigate(ticketPath(projectId, ticket.id));
-    modalHistoryEntry = true;
+  if (!fromRoute && !refresh) {
+    const replacingTicket = Boolean(parseRoute().ticketId);
+    navigate(ticketPath(projectId, ticket.id), { replace: replacingTicket });
+    if (!replacingTicket) modalHistoryEntry = true;
   }
   updateDocumentTitle();
 
   // Header
   const modalIdEl = document.getElementById('modal-ticket-id');
   modalIdEl.textContent = `#${ticket.id.slice(0, 8)}`;
-  modalIdEl.title = 'Click to copy full ID';
+  modalIdEl.title = t('Click to copy full ID');
   modalIdEl.onclick = () => copyId(ticket.id, modalIdEl);
   const badge = document.getElementById('modal-column-badge');
   badge.textContent = columnTitle(ticket.column);
@@ -1045,7 +1095,7 @@ async function openModal(projectId, ticketId, { fromRoute = false } = {}) {
     const meta = priorityMeta(ticket.priority);
     prioEl.textContent = `${meta.icon} ${meta.label}`;
     prioEl.className = `modal-priority prio-${ticket.priority || 'medium'}`;
-    prioEl.title = `Priority: ${meta.label}`;
+    prioEl.title = `${t('Priority')}: ${meta.label}`;
   }
 
   // Work type badge (hidden entirely while the ticket is unclassified)
@@ -1053,9 +1103,9 @@ async function openModal(projectId, ticketId, { fromRoute = false } = {}) {
   if (workEl) {
     const wtMeta = WORK_TYPE_META[ticket.workType];
     if (wtMeta) {
-      workEl.textContent = `${wtMeta.icon} ${wtMeta.label}`;
+      workEl.textContent = `${wtMeta.icon} ${t(wtMeta.label)}`;
       workEl.className = `modal-work-type work-${ticket.workType}`;
-      workEl.title = `${wtMeta.label}: ${wtMeta.hint}`;
+      workEl.title = `${t(wtMeta.label)}: ${t(wtMeta.hint)}`;
     } else {
       workEl.textContent = '';
       workEl.className = 'modal-work-type hidden';
@@ -1073,7 +1123,7 @@ async function openModal(projectId, ticketId, { fromRoute = false } = {}) {
 
   // Assignee (read-only, agents assign themselves via API)
   const assignee = ticket.assigneeId ? (agents[ticket.assigneeId] || { name: '???' }) : null;
-  setSideValue('modal-assignee-display', assignee ? assignee.name : '', 'Unassigned');
+  setSideValue('modal-assignee-display', assignee ? assignee.name : '', t('Unassigned'));
 
   // Group
   setSideValue('modal-group-display', ticket.group || '');
@@ -1088,7 +1138,7 @@ async function openModal(projectId, ticketId, { fromRoute = false } = {}) {
   const blockedEl = document.getElementById('modal-blocked');
   if (blockedEl) {
     if (ticket.blockedReason) {
-      blockedEl.innerHTML = `\u{26d4} <strong>Blocked:</strong> ${escapeHtml(ticket.blockedReason)}`;
+      blockedEl.innerHTML = `\u{26d4} <strong>${t('Blocked')}:</strong> ${escapeHtml(ticket.blockedReason)}`;
       blockedEl.style.display = '';
     } else {
       blockedEl.style.display = 'none';
@@ -1103,7 +1153,7 @@ async function openModal(projectId, ticketId, { fromRoute = false } = {}) {
       const doneId = doneColumnId();
       const items = deps.map(depId => {
         const dep = boardTickets.find(t => t.id === depId);
-        if (!dep) return `<div class="modal-dep-item">\u{2753} #${escapeHtml(depId.slice(0, 8))} (not found)</div>`;
+        if (!dep) return `<div class="modal-dep-item">\u{2753} #${escapeHtml(depId.slice(0, 8))} (${t('not found')})</div>`;
         const done = dep.column === doneId;
         return `
           <div class="modal-dep-item ${done ? 'dep-done' : 'dep-open'}">
@@ -1113,7 +1163,7 @@ async function openModal(projectId, ticketId, { fromRoute = false } = {}) {
             <span class="modal-dep-col">${escapeHtml(columnTitle(dep.column))}</span>
           </div>`;
       }).join('');
-      depsEl.innerHTML = `<div class="modal-deps-label">\u{2B07}\u{FE0F} Depends on:</div>${items}`;
+      depsEl.innerHTML = `<div class="modal-deps-label">\u{2B07}\u{FE0F} ${t('Depends on:')}</div>${items}`;
       depsEl.style.display = '';
     } else {
       depsEl.style.display = 'none';
@@ -1126,13 +1176,17 @@ async function openModal(projectId, ticketId, { fromRoute = false } = {}) {
   // Comments
   const commentsEl = document.getElementById('modal-comments');
   if (comments.length === 0) {
-    commentsEl.innerHTML = '<div class="modal-empty">No comments yet.</div>';
+    commentsEl.innerHTML = `<div class="modal-empty">${t('No comments yet.')}</div>`;
   } else {
     commentsEl.innerHTML = '';
     comments.reverse().forEach(c => {
-      const a = c.agentId ? (agents[c.agentId] || { name: '???' }) : { name: 'Human' };
+      const a = c.agentId ? (agents[c.agentId] || { name: '???' }) : { name: t('Human') };
       const div = document.createElement('div');
       div.className = 'modal-comment';
+      div.dataset.commentId = c.id;
+      if (refresh && !previousComments.has(c.id)) {
+        div.classList.add('modal-comment-new');
+      }
       div.innerHTML = `
         <div class="modal-comment-header">
           <span class="modal-comment-agent">\u{1f916} ${escapeHtml(a.name)}</span>
@@ -1147,17 +1201,17 @@ async function openModal(projectId, ticketId, { fromRoute = false } = {}) {
   // Revisions
   const revisionsEl = document.getElementById('modal-revisions');
   if (revisions.length === 0) {
-    revisionsEl.innerHTML = '<div class="modal-empty">No changes recorded yet.</div>';
+    revisionsEl.innerHTML = `<div class="modal-empty">${t('No changes recorded yet.')}</div>`;
   } else {
     revisionsEl.innerHTML = '';
     revisions.forEach(r => {
-      const a = r.agentId ? (agents[r.agentId] || { name: '???' }) : { name: 'Human' };
+      const a = r.agentId ? (agents[r.agentId] || { name: '???' }) : { name: t('Human') };
       const div = document.createElement('div');
       div.className = 'modal-revision';
 
-      const fieldLabel = r.field === 'column' ? 'column' : r.field;
-      const oldVal = r.oldValue || '(empty)';
-      const newVal = r.newValue || '(empty)';
+      const fieldLabel = t(r.field);
+      const oldVal = r.oldValue || t('(empty)');
+      const newVal = r.newValue || t('(empty)');
 
       div.innerHTML = `
         <div class="modal-revision-header">
@@ -1176,16 +1230,28 @@ async function openModal(projectId, ticketId, { fromRoute = false } = {}) {
   }
 
   // Reset to comments tab
-  switchTab('comments');
+  if (!refresh) switchTab('comments');
 
-  // Show (always start at the top of the ticket)
+  if (refresh) {
+    modal.querySelector('.modal-ticket').animate(
+      [{ boxShadow: '0 0 0 2px #35b8c9' }, { boxShadow: '0 0 0 0 transparent' }],
+      { duration: 900 },
+    );
+  }
+
+  // Start at the top only when opening a ticket; preserve the reader’s place on updates
   modal.classList.remove('hidden');
+  if (!refresh && matchMedia('(max-width: 760px), (max-width: 1000px) and (pointer: coarse)').matches) {
+    modal.scrollIntoView({ block: 'start' });
+  }
   const body = modal.querySelector('.modal-body');
-  if (body) body.scrollTop = 0;
+  if (body && !refresh) body.scrollTop = 0;
 }
 
 // Hides the modal without touching the URL (used by the router).
 function hideModal() {
+  ++modalLoadVersion;
+  modalTarget = null;
   document.getElementById('ticket-modal').classList.add('hidden');
   currentModalTicket = null;
   updateDocumentTitle();
@@ -1221,27 +1287,15 @@ function handleCommentAdded(data) {
   // Reload board to update comment count badges
   if (currentProjectId) loadBoard(currentProjectId);
 
-  // If the modal is open for this ticket, prepend the new comment in realtime
-  if (currentModalTicket && currentModalTicket.id === comment.ticketId) {
-    const commentsEl = document.getElementById('modal-comments');
-    // Remove "No comments yet." placeholder if present
-    const emptyMsg = commentsEl.querySelector('.modal-empty');
-    if (emptyMsg) emptyMsg.remove();
+  if (modalTarget?.id === comment.ticketId) refreshOpenModal();
+}
 
-    const agent = comment.agent || { name: '???' };
-    const div = document.createElement('div');
-    div.className = 'modal-comment modal-comment-new';
-    div.innerHTML = `
-      <div class="modal-comment-header">
-        <span class="modal-comment-agent">\u{1f916} ${escapeHtml(agent.name)}</span>
-        <span class="modal-comment-time">${formatTime(comment.createdAt)}</span>
-      </div>
-      <div class="modal-comment-body markdown-body">${renderMarkdown(comment.body)}</div>
-    `;
-    // Newest first – prepend
-    commentsEl.insertBefore(div, commentsEl.firstChild);
-    div.addEventListener('animationend', () => div.classList.remove('modal-comment-new'), { once: true });
-  }
+function refreshOpenModal() {
+  if (!modalTarget) return;
+  return openModal(modalTarget.projectId, modalTarget.id, {
+    fromRoute: modalTarget.fromRoute,
+    refresh: currentModalTicket?.id === modalTarget.id,
+  });
 }
 
 window.openModal = openModal;
@@ -1267,11 +1321,11 @@ function columnEditorRow(col) {
   row.dataset.colId = col.id || '';
   row.innerHTML = `
     <span class="columns-editor-drag">&#x2630;</span>
-    <input type="text" class="columns-editor-title" aria-label="Column name" value="${escapeHtml(col.title)}" placeholder="Column name" maxlength="50">
+    <input type="text" class="columns-editor-title" aria-label="${t('Column name')}" value="${escapeHtml(col.title)}" placeholder="${t('Column name')}" maxlength="50">
     <span class="columns-editor-id">${col.id ? escapeHtml(col.id) : ''}</span>
-    <button class="btn-small" title="Move up" onclick="moveColumnRow(this, -1)">&#x25B2;</button>
-    <button class="btn-small" title="Move down" onclick="moveColumnRow(this, 1)">&#x25BC;</button>
-    <button class="btn-small btn-remove-column" title="Remove column" onclick="this.closest('.columns-editor-row').remove()">&#x2715;</button>
+    <button class="btn-small" title="${t('Move up')}" onclick="moveColumnRow(this, -1)">&#x25B2;</button>
+    <button class="btn-small" title="${t('Move down')}" onclick="moveColumnRow(this, 1)">&#x25BC;</button>
+    <button class="btn-small btn-remove-column" title="${t('Remove column')}" onclick="this.closest('.columns-editor-row').remove()">&#x2715;</button>
   `;
   return row;
 }
@@ -1358,14 +1412,14 @@ window.saveColumns = saveColumns;
 async function openAgentsModal() {
   const modal = document.getElementById('agents-modal');
   const list = document.getElementById('agents-list');
-  list.innerHTML = '<div class="agents-empty">Loading...</div>';
+  list.innerHTML = `<div class="agents-empty">${t('Loading...')}</div>`;
   modal.classList.remove('hidden');
 
   try {
     const agentsWithKeys = await fetchJSON('/api/agents/keys');
 
     if (agentsWithKeys.length === 0) {
-      list.innerHTML = '<div class="agents-empty">No agents registered yet.</div>';
+      list.innerHTML = `<div class="agents-empty">${t('No agents registered yet.')}</div>`;
       return;
     }
 
@@ -1377,14 +1431,14 @@ async function openAgentsModal() {
         <div class="agent-row-info">
           <div class="agent-row-name">\u{1f916} ${escapeHtml(a.name)}</div>
           <div class="agent-row-key">${escapeHtml(a.apiKey)}</div>
-          <div class="agent-row-meta">ID: ${a.id.slice(0, 8)} &middot; Created: ${formatTime(a.createdAt)}</div>
+          <div class="agent-row-meta">ID: ${a.id.slice(0, 8)} &middot; ${t('Created')}: ${formatTime(a.createdAt)}</div>
         </div>
-        <button class="btn-copy" onclick="copyApiKey(this, '${escapeHtml(a.apiKey)}')">Copy</button>
+        <button class="btn-copy" onclick="copyApiKey(this, '${escapeHtml(a.apiKey)}')">${t('Copy')}</button>
       `;
       list.appendChild(row);
     });
   } catch {
-    list.innerHTML = '<div class="agents-empty">Failed to load agents.</div>';
+    list.innerHTML = `<div class="agents-empty">${t('Failed to load agents.')}</div>`;
   }
 }
 
@@ -1395,10 +1449,10 @@ function closeAgentsModal(event) {
 
 function copyApiKey(btn, key) {
   navigator.clipboard.writeText(key).then(() => {
-    btn.textContent = 'Copied!';
+    btn.textContent = t('Copied!');
     btn.classList.add('copied');
     setTimeout(() => {
-      btn.textContent = 'Copy';
+      btn.textContent = t('Copy');
       btn.classList.remove('copied');
     }, 1500);
   });
@@ -1407,7 +1461,7 @@ function copyApiKey(btn, key) {
 function copyId(fullId, el) {
   navigator.clipboard.writeText(fullId).then(() => {
     const original = el.textContent;
-    el.textContent = 'Copied!';
+    el.textContent = t('Copied!');
     el.classList.add('copied');
     setTimeout(() => {
       el.textContent = original;
@@ -1484,7 +1538,7 @@ function renderAccessEffect(ticketId, restartAnimation = false) {
     const badge = document.createElement('div');
     const isWrite = !['list', 'read'].includes(action);
     badge.className = `access-badge${isWrite ? ' access-badge-write' : ''}`;
-    badge.innerHTML = `<span class="access-dot"></span> ${escapeHtml(name)} <span class="access-label">${ACCESS_LABELS[action] || 'accessing'}</span>`;
+    badge.innerHTML = `<span class="access-dot"></span> ${escapeHtml(name)} <span class="access-label">${t(ACCESS_LABELS[action] || 'accessing')}</span>`;
     container.appendChild(badge);
   });
 
@@ -1509,6 +1563,7 @@ function clearAllAccessTimers() {
 // ---------------------------------------------------------------------------
 
 function connectWebSocket(projectId) {
+  clearTimeout(reconnectTimer);
   if (ws) {
     ws.onclose = null; // prevent old socket's onclose from interfering
     ws.close();
@@ -1534,8 +1589,10 @@ function connectWebSocket(projectId) {
     console.log('[agentboard] WS message:', msg.type, msg.id || '');
 
     if (msg.type === 'connection_ack') {
+      boardNotifications.setConnected(true);
       console.log('[agentboard] Connected! Subscribing to events', projectId ? `for project ${projectId}` : '(overview)');
       // Always subscribe to global events
+      subscribeGlobal(socket, '12', 'boardEventAdded', 'id kind projectId projectName ticketId ticketTitle actorName detail timestamp');
       subscribeGlobal(socket, '6', 'agentChanged', 'id name createdAt');
       subscribeGlobal(socket, '7', 'projectChanged', 'id name description columns { id title } createdAt');
       subscribeGlobal(socket, '9', 'auditAdded', 'id agentId method path statusCode requestBody timestamp');
@@ -1550,6 +1607,24 @@ function connectWebSocket(projectId) {
         subscribe(socket, '8', 'ticketAccessed', projectId);
         subscribe(socket, '10', 'commentAdded', projectId);
       }
+      socket.send(JSON.stringify({ type: 'ping' }));
+    }
+
+    if (msg.type === 'ping') {
+      socket.send(JSON.stringify({ type: 'pong', payload: msg.payload }));
+    }
+
+    // Catch up after subscribing: events missed during disconnects are not replayed.
+    if (msg.type === 'pong') {
+      boardNotifications.load();
+      if (projectId === currentProjectId && projectId) {
+        loadBoard(projectId);
+        loadActivity(projectId);
+        refreshOpenModal();
+      } else if (!currentProjectId) {
+        loadProjectOverview();
+      }
+      loadAgents();
     }
 
     if (msg.type === 'next') {
@@ -1570,8 +1645,9 @@ function connectWebSocket(projectId) {
     console.log('[agentboard] WebSocket closed, code:', event.code, 'reason:', event.reason);
     if (ws !== socket) return; // already replaced by a new connection
     ws = null;
+    boardNotifications.setConnected(false);
     // Reconnect after 2 seconds
-    setTimeout(() => {
+    reconnectTimer = setTimeout(() => {
       connectWebSocket(currentProjectId);
     }, 2000);
   };
@@ -1606,6 +1682,10 @@ function subscribeGlobal(socket, id, eventName, fields) {
 
 function handleSubscriptionEvent(subId, data) {
   if (!data) return;
+  if (subId === '12') {
+    if (data.boardEventAdded) boardNotifications.receive(data.boardEventAdded);
+    return;
+  }
 
   // Agent changed → reload agents (global, no project needed)
   if (subId === '6') {
@@ -1655,6 +1735,15 @@ function handleSubscriptionEvent(subId, data) {
     loadBoard(currentProjectId);
     loadActivity(currentProjectId);
     loadAgents();
+    const ticket = data.ticketCreated || data.ticketUpdated || data.ticketMoved || data.ticketDeleted;
+    if (ticket?.id === modalTarget?.id) {
+      if (subId === '5') {
+        hideModal();
+        navigate(projectPath(currentProjectId), { replace: true });
+      } else refreshOpenModal();
+    } else if (currentModalTicket?.dependsOn?.includes(ticket?.id)) {
+      refreshOpenModal();
+    }
   }
 
   // Activity event → prepend with animation (no full reload)
@@ -1692,14 +1781,11 @@ function renderMarkdown(text) {
 }
 
 function formatTime(timestamp) {
-  const date = new Date(timestamp + 'Z');
-  const now = new Date();
-  const diff = Math.floor((now - date) / 1000);
-
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return date.toLocaleDateString();
+  const date = new Date(/(?:Z|[+-]\d{2}:?\d{2})$/.test(timestamp) ? timestamp : timestamp + 'Z');
+  const seconds = Math.max(0, Math.floor((Date.now() - date) / 1000));
+  if (seconds >= 86400) return date.toLocaleDateString(i18n.language);
+  const [value, unit] = seconds < 60 ? [seconds, 'second'] : seconds < 3600 ? [Math.floor(seconds / 60), 'minute'] : [Math.floor(seconds / 3600), 'hour'];
+  return new Intl.RelativeTimeFormat(i18n.language, { numeric: 'auto', style: 'short' }).format(-value, unit);
 }
 
 // ---------------------------------------------------------------------------
@@ -1761,7 +1847,7 @@ async function selectProject(projectId, projectName, { fromRoute = false, replac
     activityFeed.style.display = 'flex';
     auditPanel.classList.remove('hidden');
     auditPanel.style.display = 'block';
-    projectLabel.textContent = `\u2190 ${currentProjectName || 'Back'}`;
+    projectLabel.textContent = `\u2190 ${currentProjectName || t('Back')}`;
     projectLabel.style.display = '';
     document.getElementById('edit-columns-btn').style.display = '';
 
@@ -1846,11 +1932,13 @@ async function init() {
     if (list.classList.contains('hidden')) {
       list.classList.remove('hidden');
       list.style.display = 'block';
-      btn.textContent = 'Hide';
+      btn.dataset.i18n = 'Hide';
+      btn.textContent = t('Hide');
       loadAudit();
     } else {
       list.classList.add('hidden');
-      btn.textContent = 'Show';
+      btn.dataset.i18n = 'Show';
+      btn.textContent = t('Show');
     }
   });
 }
@@ -1860,4 +1948,20 @@ requestAnimationFrame(() => {
   requestAnimationFrame(() => {
     init();
   });
+});
+
+window.addEventListener('app-languagechange', () => {
+  loadAgents();
+  if (runtimeStatusSnapshot) renderRuntimeStatus(runtimeStatusSnapshot);
+  if (currentProjectId) {
+    renderBoardColumns();
+    prevTicketState = new Map();
+    prevGroupState = new Map();
+    renderBoard(boardTickets, { preserveScroll: true });
+    renderActivity();
+    refreshOpenModal();
+  } else {
+    prevOverviewStats = {};
+    loadProjectOverview();
+  }
 });

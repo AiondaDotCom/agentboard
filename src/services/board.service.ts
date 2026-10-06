@@ -49,6 +49,21 @@ function optionalCount(value: number | undefined, field: string): number {
 export class BoardService {
   constructor(private db: AgentboardDB) {}
 
+  private boardEvent(kind: string, actorId: string | null, ticket?: Ticket, project?: Project, detail?: string): void {
+    const owner = project ?? (ticket ? this.db.getProject(ticket.projectId) : undefined);
+    const event = this.db.logBoardEvent({
+      kind,
+      projectId: owner?.id ?? null,
+      projectName: owner?.name ?? '',
+      ticketId: ticket?.id ?? null,
+      ticketTitle: ticket?.title ?? '',
+      actorName: actorId ? this.db.getAgentById(actorId)?.name ?? '' : '',
+      detail: detail ?? (ticket ? owner?.columns.find(column => column.id === ticket.column)?.title ?? ticket.column : ''),
+    });
+    pubsub.publish(EVENTS.BOARD_EVENT_ADDED, { boardEventAdded: event });
+  }
+
+
   // -------------------------------------------------------------------------
   // Business audit logging (DORA/BaFin compliant)
   // Logs WHO did WHAT on WHICH resource, at the business level.
@@ -158,6 +173,7 @@ export class BoardService {
     try {
       const agent = this.db.createAgent(name.trim());
       pubsub.publish(EVENTS.AGENT_CHANGED, { agentChanged: agent });
+      this.boardEvent('agent_created', actorId ?? null, undefined, undefined, agent.name);
       this.audit(actorId ?? null, 'CREATE', `agent '${agent.name}'`);
       return agent;
     } catch (err: unknown) {
@@ -193,6 +209,7 @@ export class BoardService {
     const agent = this.db.getAgentById(id);
     if (!agent) throw new NotFoundError('Agent not found');
     this.db.deleteAgent(id);
+    this.boardEvent('agent_deleted', null, undefined, undefined, agent.name);
     pubsub.publish(EVENTS.AGENT_CHANGED, { agentChanged: agent });
   }
 
@@ -212,6 +229,7 @@ export class BoardService {
     const cols = columns !== undefined ? this.validateColumnsInput(columns) : DEFAULT_COLUMNS;
     const project = this.db.createProject(name.trim(), description ?? '', cols);
     pubsub.publish(EVENTS.PROJECT_CHANGED, { projectChanged: project });
+    this.boardEvent('project_created', actorId ?? null, undefined, project);
     this.audit(actorId ?? null, 'CREATE', `project '${project.name}'`);
     return project;
   }
@@ -263,6 +281,7 @@ export class BoardService {
     if (!project) throw new NotFoundError('Project not found');
 
     pubsub.publish(EVENTS.PROJECT_CHANGED, { projectChanged: project });
+    this.boardEvent('project_updated', actorId ?? null, undefined, project);
     this.audit(actorId ?? null, 'UPDATE', `project '${project.name}'`, JSON.stringify({
       ...cleanUpdates,
       columns: cleanUpdates.columns?.map((c) => c.id),
@@ -291,6 +310,7 @@ export class BoardService {
     if (!project) throw new NotFoundError('Project not found');
     this.db.deleteProject(id);
     pubsub.publish(EVENTS.PROJECT_CHANGED, { projectChanged: project });
+    this.boardEvent('project_deleted', actorId ?? null, undefined, project);
     this.audit(actorId ?? null, 'DELETE', `project '${project.name}'`);
   }
 
@@ -368,6 +388,7 @@ export class BoardService {
       projectId: ticket.projectId,
     });
 
+    this.boardEvent('ticket_created', agentId ?? null, ticket);
     this.audit(agentId ?? null, 'CREATE', `ticket '${ticket.title}'`, `in project ${projectId}`);
     if (agentId !== undefined && agentId !== null) this.notifyTicketAccess(projectId, ticket.id, agentId, 'create');
     return ticket;
@@ -505,6 +526,7 @@ export class BoardService {
       projectId: ticket.projectId,
     });
 
+    this.boardEvent(ticket.column !== resolved.column ? 'ticket_moved' : 'ticket_updated', actorId ?? null, ticket);
     this.audit(actorId ?? null, 'UPDATE', `ticket '${ticket.title}'`, JSON.stringify(cleanUpdates));
     if (actorId !== undefined && actorId !== null) this.notifyTicketAccess(projectId, ticket.id, actorId, 'update');
     return ticket;
@@ -534,6 +556,7 @@ export class BoardService {
       projectId: ticket.projectId,
     });
 
+    this.boardEvent('ticket_moved', actorId ?? null, ticket);
     this.audit(actorId ?? null, 'MOVE', `ticket '${ticket.title}'`, `→ ${column}`);
     if (actorId !== undefined && actorId !== null) this.notifyTicketAccess(projectId, ticket.id, actorId, 'move');
     return ticket;
@@ -616,6 +639,7 @@ export class BoardService {
       projectId: target.id,
     });
 
+    this.boardEvent('ticket_transferred', actorId ?? null, ticket, target, source.name);
     this.audit(actorId ?? null, 'MOVE', `ticket '${ticket.title}'`, `project '${source.name}' → '${target.name}' (${targetColumn})`);
     if (actorId !== undefined && actorId !== null) this.notifyTicketAccess(target.id, ticket.id, actorId, 'move');
     return ticket;
@@ -629,6 +653,7 @@ export class BoardService {
       ticketDeleted: ticket,
       projectId,
     });
+    this.boardEvent('ticket_deleted', actorId ?? null, ticket);
     this.audit(actorId ?? null, 'DELETE', `ticket '${ticket.title}'`);
   }
 
@@ -670,6 +695,7 @@ export class BoardService {
       projectId: ticket.projectId,
     });
 
+    this.boardEvent('ticket_assigned', actorId ?? null, ticket, undefined, assignee.name);
     this.audit(actorId ?? null, 'ASSIGN', `ticket '${ticket.title}'`, `→ ${assignee.name}`);
     if (actorId !== undefined && actorId !== null) this.notifyTicketAccess(projectId, ticket.id, actorId, 'assign');
     return ticket;
@@ -695,6 +721,7 @@ export class BoardService {
       projectId: ticket.projectId,
     });
 
+    this.boardEvent('ticket_unassigned', actorId ?? null, ticket);
     this.audit(actorId ?? null, 'UNASSIGN', `ticket '${ticket.title}'`);
     if (actorId !== undefined && actorId !== null) this.notifyTicketAccess(projectId, ticket.id, actorId, 'unassign');
     return ticket;
@@ -712,6 +739,7 @@ export class BoardService {
     const ticket = this.db.moveTicket(projectId, resolved.id, doneColumn, null);
     if (!ticket) throw new NotFoundError('Ticket not found');
 
+    this.boardEvent('ticket_moved', null, ticket);
     this.db.logActivity(null, ticket.id, 'ticket_moved', `Human closed \u2192 ${doneColumn}`);
 
     pubsub.publish(EVENTS.TICKET_MOVED, {
@@ -730,6 +758,7 @@ export class BoardService {
     const ticket = this.db.moveTicket(projectId, resolved.id, firstColumn, null);
     if (!ticket) throw new NotFoundError('Ticket not found');
 
+    this.boardEvent('ticket_moved', null, ticket);
     this.db.logActivity(null, ticket.id, 'ticket_moved', `Human reopened \u2192 ${firstColumn}`);
 
     pubsub.publish(EVENTS.TICKET_MOVED, {
@@ -775,6 +804,7 @@ export class BoardService {
       projectId,
     });
 
+    this.boardEvent('comment_added', agentId, resolved);
     this.audit(agentId, 'COMMENT', `ticket '${resolved.id}'`, body.trim());
     this.notifyTicketAccess(projectId, resolved.id, agentId, 'comment');
     return comment;

@@ -405,8 +405,8 @@ const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(currentDir, '..', 'public');
 
 app.use((req, res, next): void => {
-  // Login page is always accessible
-  if (req.path === '/login.html') { next(); return; }
+  // Login page and its shared color palette are always accessible
+  if (req.path === '/login.html' || req.path === '/theme.css' || req.path === '/i18n.js') { next(); return; }
 
   const cookies = parseCookies(req.headers.cookie);
   const token = cookies['agentboard_session'];
@@ -425,6 +425,15 @@ app.use((req, res, next): void => {
 });
 
 // Static files
+app.get('/api/notifications', (req, res): void => {
+  const before = req.query['before'] === undefined ? Number.MAX_SAFE_INTEGER : Number(req.query['before']);
+  if (!Number.isSafeInteger(before) || before < 1) {
+    res.status(400).json({ error: 'Invalid event cursor' });
+    return;
+  }
+  res.json(db.getBoardEvents(before));
+});
+
 app.use(express.static(publicDir));
 
 // Client-side routes (/projects/:id, /projects/:id/tickets/:ticketId) → SPA shell

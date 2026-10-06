@@ -5,6 +5,7 @@
 import { EventEmitter } from 'node:events';
 
 export const EVENTS = {
+  BOARD_EVENT_ADDED: 'BOARD_EVENT_ADDED',
   TICKET_CREATED: 'TICKET_CREATED',
   TICKET_UPDATED: 'TICKET_UPDATED',
   TICKET_MOVED: 'TICKET_MOVED',

@@ -116,3 +116,10 @@ CREATE TABLE IF NOT EXISTS runtime_reports (
 );
 
 CREATE INDEX IF NOT EXISTS idx_runtime_reports_reported_at ON runtime_reports(reported_at);
+
+-- No foreign keys: event history must survive deletion of its subject.
+CREATE TABLE IF NOT EXISTS board_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  payload TEXT NOT NULL,
+  timestamp TEXT NOT NULL
+);

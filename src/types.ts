@@ -287,3 +287,16 @@ export interface AuditEntry {
   requestBody: string;
   timestamp: string;
 }
+
+/** Durable, localized by the client; names survive ticket/project deletion. */
+export interface BoardEvent {
+  id: number;
+  kind: string;
+  projectId: string | null;
+  projectName: string;
+  ticketId: string | null;
+  ticketTitle: string;
+  actorName: string;
+  detail: string;
+  timestamp: string;
+}

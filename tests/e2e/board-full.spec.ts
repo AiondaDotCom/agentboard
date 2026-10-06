@@ -275,7 +275,8 @@ test.describe('Agentboard E2E – Comprehensive Feature Test', () => {
 
     const sentinel = page.locator('[data-column="done"] .done-lazy-sentinel');
     await expect(sentinel).toHaveCount(1);
-    await sentinel.scrollIntoViewIfNeeded();
+    // Loading replaces the sentinel immediately; do not wait for it to stay stable.
+    await sentinel.evaluate(element => element.scrollIntoView({ block: 'end' }));
 
     await expect(page.locator('[data-column="done"] .ticket-card')).toHaveCount(21);
     await expect(sentinel).toHaveCount(0);
@@ -304,6 +305,249 @@ test.describe('Agentboard E2E – Comprehensive Feature Test', () => {
   });
 
   // -------------------------------------------------------------------------
+  test('Notifications stream across projects, count unread on the bell and stay live while open', async ({ page, baseURL }, testInfo) => {
+    const url = baseURL!;
+    const other = await apiCreateProject(url, adminKey, 'Other live project');
+    await login(page, adminKey);
+    const connected = page.waitForEvent('console', msg => msg.text().includes('WS message: pong'));
+    await navigateToProject(page, projectName);
+    await connected;
+    await page.locator('#notifications-toggle').click();
+    await expect(page.locator('#notification-list .notification-item').first()).toBeVisible();
+    await expect(page.locator('#notification-count')).toBeHidden();
+    await page.locator('#notifications-close').click();
+
+    const ticket = await apiCreateTicket(url, agent.apiKey, other.id, 'Global live ticket');
+    await expect(page.locator('#notification-count')).toHaveText('1');
+    await apiAddComment(url, agent.apiKey, other.id, ticket.id, 'Live comment');
+    await expect(page.locator('#notification-count')).toHaveText('2');
+    await page.locator('#notifications-toggle').click();
+    await expect(page.locator('.notification-message').first()).toHaveText('Comment added to ticket “Global live ticket”.');
+    await expect(page.locator('#notification-count')).toBeHidden();
+    const moved = await fetch(`${url}/api/projects/${other.id}/tickets/${ticket.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-Api-Key': agent.apiKey },
+      body: JSON.stringify({ column: 'done' }),
+    });
+    expect(moved.ok).toBeTruthy();
+    await expect(page.locator('.notification-message').first()).toHaveText('Ticket “Global live ticket” was moved to Done.');
+    await expect(page.locator('#notification-count')).toBeHidden();
+    const eventIds = await page.locator('.notification-item').evaluateAll(items => items.map(item => item.getAttribute('data-event-id')));
+    expect(new Set(eventIds).size).toBe(eventIds.length);
+    await page.locator('#notifications-close').click();
+    await expect(page.locator('#ui-language')).toBeHidden();
+    await page.locator('#settings-toggle').click();
+    await page.locator('#ui-language').selectOption('de');
+    await expect(page.locator('#settings-title')).toHaveText('Einstellungen');
+    expect(await page.evaluate(() => localStorage.getItem('agentboard.language'))).toBe('de');
+    await page.locator('#settings-close').click();
+    await expect(page.locator('#settings-dialog')).toBeHidden();
+    await expect(page.locator('#logout-btn')).toHaveText('Abmelden');
+    await page.locator('#notifications-toggle').click();
+    await expect(page.locator('#notifications-title')).toHaveText('Benachrichtigungen');
+    await expect(page.locator('.notification-message').first()).toHaveText('Ticket „Global live ticket“ wurde nach „Erledigt“ verschoben.');
+    await page.screenshot({ path: testInfo.outputPath('notifications-de.png'), animations: 'disabled' });
+    await page.locator('.notification-item').first().click();
+    await expect(page.locator('#modal-title')).toHaveText('Global live ticket');
+    await expect(page).toHaveURL(new RegExp(`/projects/${other.id}/tickets/${ticket.id}$`));
+    await expect(page.locator('.modal-tab[data-tab="comments"]')).toHaveText('Kommentare');
+    await expect(page.locator('.modal-comment-body')).toHaveText('Live comment');
+
+    // Read state and chosen language survive a reload; unseen events stay unread.
+    await apiAddComment(url, agent.apiKey, other.id, ticket.id, 'Unread after navigation');
+    await expect(page.locator('#notification-count')).toHaveText('1');
+    await page.reload();
+    await expect(page.locator('#ui-language')).toHaveValue('de');
+    await expect(page.locator('#notification-count')).toHaveText('1');
+  });
+
+  test('Language can be selected at login and notification history catches up after reconnect', async ({ page, baseURL }) => {
+    const url = baseURL!;
+    await page.goto('/login.html');
+    await page.locator('#login-language').selectOption('de');
+    await expect(page.locator('.login-title')).toHaveText('Anmelden');
+    await page.locator('#password').fill(adminKey);
+    await page.locator('.btn-login').click();
+    await expect(page.locator('#ui-language')).toHaveValue('de');
+    const connected = page.waitForEvent('console', msg => msg.text().includes('WS message: pong'));
+    await navigateToProject(page, projectName);
+    await connected;
+    await expect(page.locator('[data-column="done"] .column-title')).toHaveText('ERLEDIGT');
+    await page.locator('#notifications-toggle').click();
+    await expect(page.locator('.notification-item').first()).toBeVisible();
+    await page.locator('#notifications-close').click();
+    await page.evaluate('ws.close()');
+    await page.waitForFunction('ws === null');
+    await apiCreateTicket(url, agent.apiKey, project.id, 'Created during disconnect');
+    await expect(page.locator('#notification-count')).toHaveText('1');
+    await page.locator('#notifications-toggle').click();
+    await expect(page.locator('.notification-message').first()).toHaveText('Ticket „Created during disconnect“ wurde erstellt.');
+    await page.setViewportSize({ width: 390, height: 844 });
+    const rect = await page.locator('#notifications-panel').boundingBox();
+    expect(rect!.x).toBeGreaterThanOrEqual(0);
+    expect(rect!.y + rect!.height).toBeLessThanOrEqual(844);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#notifications-panel')).toBeHidden();
+    await expect(page.locator('#notifications-toggle')).toBeFocused();
+  });
+
+  test('Appearance follows system settings on login, board and open ticket', async ({ page, baseURL }, testInfo) => {
+    const ticket = await apiCreateTicket(baseURL!, agent.apiKey, project.id, 'System theme ticket', {
+      description: 'Readable **Markdown** and `code` in both themes.', blocked_reason: 'Waiting for review',
+    });
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.goto('/login.html');
+    await expect(page.locator('html')).toHaveCSS('color-scheme', 'light');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(244, 247, 251)');
+    await expect(page.locator('#password')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect(page.locator('html')).toHaveCSS('color-scheme', 'dark');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(15, 18, 25)');
+    await login(page, adminKey);
+    await navigateToProject(page, projectName);
+    await page.locator(`[data-ticket-id="${ticket.id}"]`).click();
+    await expect(page.locator('#modal-title')).toHaveText('System theme ticket');
+    const ticketUrl = page.url();
+    await page.emulateMedia({ colorScheme: 'light' });
+    await expect(page.locator('html')).toHaveCSS('color-scheme', 'light');
+    await expect(page.locator('.modal-ticket')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+    await expect(page.locator('#modal-title')).toHaveCSS('color', 'rgb(23, 38, 58)');
+    await expect(page.locator('#modal-blocked')).toHaveCSS('color', 'rgb(185, 28, 28)');
+    await expect(page.locator('#modal-project-select')).toHaveCSS('background-color', 'rgb(241, 245, 249)');
+    await page.screenshot({ path: testInfo.outputPath('light-ticket.png'), animations: 'disabled' });
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect(page.locator('html')).toHaveCSS('color-scheme', 'dark');
+    await expect(page.locator('.modal-ticket')).toHaveCSS('background-color', 'rgb(28, 32, 56)');
+    await expect(page.locator('#modal-title')).toHaveText('System theme ticket');
+    expect(page.url()).toBe(ticketUrl);
+  });
+
+  test('Header wraps long project names without overlapping the runtime status', async ({ page }) => {
+    await login(page, adminKey);
+    await navigateToProject(page, projectName);
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme });
+      for (const width of [1920, 1440, 1207, 1201, 1024, 390, 320]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.locator('#current-project-name').evaluate(el => {
+          el.textContent = '← Very long project name for application development ' + 'UnbrokenName'.repeat(12);
+        });
+        const fits = await page.evaluate(() => {
+          const items = [...document.querySelectorAll('.header-left, .header-right > *')]
+            .map(el => el.getBoundingClientRect()).filter(rect => rect.width > 0);
+          return items.every((a, i) => a.left >= 0 && a.right <= innerWidth + 1 && items.slice(i + 1).every(b =>
+            Math.min(a.right, b.right) - Math.max(a.left, b.left) <= 1 ||
+            Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) <= 1));
+        });
+        expect(fits, `${colorScheme} header at ${width}px`).toBeTruthy();
+      }
+    }
+  });
+
+  test('Realtime: comments and all ticket edits update and animate without refresh', async ({ page, baseURL }) => {
+    const url = baseURL!;
+    const ticket = await apiCreateTicket(url, agent.apiKey, project.id, 'Live ticket');
+    await login(page, adminKey);
+    const connected = page.waitForEvent('console', msg => msg.text().includes('WS message: pong'));
+    await navigateToProject(page, projectName);
+    await connected;
+    const card = page.locator(`[data-ticket-id="${ticket.id}"]`);
+    await card.click();
+    await expect(page.locator('#modal-title')).toHaveText('Live ticket');
+    await page.evaluate(`window.liveAnimations = []; document.addEventListener('animationstart', e => window.liveAnimations.push(e.animationName));`);
+
+    await apiAddComment(url, agent.apiKey, project.id, ticket.id, 'Arrived live');
+    await expect(page.locator('.modal-comment-body')).toHaveText('Arrived live');
+    await expect(card.locator('.ticket-comment-count')).toContainText('1');
+    await expect.poll(() => page.evaluate('window.liveAnimations')).toEqual(expect.arrayContaining(['commentSlideIn', 'updateFlash']));
+
+    await Promise.all(['Burst one', 'Burst two', 'Burst three'].map(body =>
+      apiAddComment(url, agent.apiKey, project.id, ticket.id, body)));
+    await expect(page.locator('.modal-comment-body')).toHaveCount(4);
+    await expect(card.locator('.ticket-comment-count')).toContainText('4');
+
+    await page.click('.modal-tab[data-tab="history"]');
+    for (const update of [
+      { title: 'Changed live' }, { description: 'New description' },
+      { priority: 'high' }, { work_type: 'mechanical' }, { blocked_reason: 'Waiting' },
+    ]) {
+      await page.evaluate('window.liveAnimations = []');
+      const response = await fetch(`${url}/api/projects/${project.id}/tickets/${ticket.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-Api-Key': agent.apiKey },
+        body: JSON.stringify(update),
+      });
+      expect(response.ok).toBeTruthy();
+      await expect.poll(() => page.evaluate('window.liveAnimations')).toContain('updateFlash');
+    }
+    await expect(page.locator('#modal-title')).toHaveText('Changed live');
+    await expect(page.locator('#modal-desc')).toHaveText('New description');
+    await expect(page.locator('#modal-blocked')).toContainText('Waiting');
+    await expect(page.locator('.modal-tab[data-tab="history"]')).toHaveClass(/active/);
+    await expect(page.locator('#modal-revisions')).toContainText('Changed live');
+    await page.evaluate('window.liveAnimations = []');
+    const deleted = await fetch(`${url}/api/projects/${project.id}/tickets/${ticket.id}`, {
+      method: 'DELETE', headers: { 'X-Api-Key': agent.apiKey },
+    });
+    expect(deleted.ok).toBeTruthy();
+    await expect(card).toHaveCount(0);
+    await expect(page.locator('#ticket-modal')).toHaveClass(/hidden/);
+    await expect.poll(() => page.evaluate('window.liveAnimations')).toContain('departFade');
+  });
+
+  test('Realtime: a delayed old response cannot overwrite a new comment count', async ({ page, baseURL }) => {
+    const url = baseURL!;
+    const ticket = await apiCreateTicket(url, agent.apiKey, project.id, 'Delayed response');
+    await login(page, adminKey);
+    const connected = page.waitForEvent('console', msg => msg.text().includes('WS message: pong'));
+    await navigateToProject(page, projectName);
+    await connected;
+    await page.locator(`[data-ticket-id="${ticket.id}"]`).click();
+    await expect(page.locator('#modal-title')).toHaveText('Delayed response');
+
+    let captured!: () => void;
+    const oldResponseCaptured = new Promise<void>(resolve => { captured = resolve; });
+    let release!: () => void;
+    const releaseOldResponse = new Promise<void>(resolve => { release = resolve; });
+    await page.route(`**/api/projects/${project.id}/tickets?*`, async route => {
+      const response = await route.fetch();
+      captured();
+      await releaseOldResponse;
+      await route.fulfill({ response });
+    }, { times: 1 });
+    const oldLoad = page.evaluate('loadBoard(currentProjectId)');
+    await oldResponseCaptured;
+    try {
+      await apiAddComment(url, agent.apiKey, project.id, ticket.id, 'Latest state');
+      await expect(page.locator(`[data-ticket-id="${ticket.id}"] .ticket-comment-count`)).toContainText('1');
+    } finally {
+      release();
+      await oldLoad;
+    }
+    await expect(page.locator(`[data-ticket-id="${ticket.id}"] .ticket-comment-count`)).toContainText('1');
+    await expect(page.locator('.modal-comment-body')).toHaveText('Latest state');
+  });
+
+  test('Realtime: reconnect catches up comments and ticket details missed offline', async ({ page, baseURL }) => {
+    const url = baseURL!;
+    const ticket = await apiCreateTicket(url, agent.apiKey, project.id, 'Offline ticket');
+    await login(page, adminKey);
+    const connected = page.waitForEvent('console', msg => msg.text().includes('WS message: pong'));
+    await navigateToProject(page, projectName);
+    await connected;
+    await page.locator(`[data-ticket-id="${ticket.id}"]`).click();
+    await expect(page.locator('#modal-title')).toHaveText('Offline ticket');
+    await page.evaluate(`ws.close();`);
+    await page.waitForFunction('ws === null');
+    await apiAddComment(url, agent.apiKey, project.id, ticket.id, 'Written during disconnect');
+    const changed = await fetch(`${url}/api/projects/${project.id}/tickets/${ticket.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-Api-Key': agent.apiKey },
+      body: JSON.stringify({ title: 'Changed while offline' }),
+    });
+    expect(changed.ok).toBeTruthy();
+    await expect(page.locator('#modal-title')).toHaveText('Changed while offline');
+    await expect(page.locator('.modal-comment-body')).toHaveText('Written during disconnect');
+    await expect(page.locator(`[data-ticket-id="${ticket.id}"] .ticket-comment-count`)).toContainText('1');
+  });
+
   // 4. Ticket Card – Meta info (author, comment count)
   // -------------------------------------------------------------------------
 
@@ -587,10 +831,11 @@ test.describe('Agentboard E2E – Comprehensive Feature Test', () => {
   // 12. Modal close via overlay click
   // -------------------------------------------------------------------------
 
-  test('Modal: closes when clicking overlay backdrop', async ({ page, baseURL }) => {
+  test('Ticket panel: stays beside the board and lets users switch tickets', async ({ page, baseURL }) => {
     const url = baseURL ?? 'http://localhost:3000';
 
     await apiCreateTicket(url, agent.apiKey, project.id, 'Overlay Test', { column: 'backlog' });
+    await apiCreateTicket(url, agent.apiKey, project.id, 'Second panel ticket', { column: 'backlog' });
 
     await login(page, adminKey);
     await navigateToProject(page, projectName);
@@ -599,8 +844,14 @@ test.describe('Agentboard E2E – Comprehensive Feature Test', () => {
     await page.locator('.ticket-card .ticket-title', { hasText: 'Overlay Test' }).click();
     await expect(page.locator('#ticket-modal')).not.toHaveClass(/hidden/);
 
-    // Click the overlay (outside the modal content)
-    await page.locator('#ticket-modal').click({ position: { x: 5, y: 5 } });
+    const board = await page.locator('#board').boundingBox();
+    const panel = await page.locator('#ticket-modal').boundingBox();
+    expect(board!.x + board!.width).toBeLessThanOrEqual(panel!.x + 1);
+    expect(panel!.y).toBeCloseTo(board!.y, 0);
+    await page.locator('.ticket-title', { hasText: 'Second panel ticket' }).click();
+    await expect(page.locator('#modal-title')).toHaveText('Second panel ticket');
+    await page.locator('#ticket-modal .modal-close').click();
+    await expect(page).toHaveURL(new RegExp(`/projects/${project.id}$`));
     await expect(page.locator('#ticket-modal')).toHaveClass(/hidden/);
   });
 
@@ -733,7 +984,7 @@ test.describe('Agentboard E2E – Comprehensive Feature Test', () => {
 
     const card = page.locator('.ticket-card', { hasText: 'Blocked Ticket' });
     await expect(card.locator('.ticket-blocked')).toContainText('Waiting for Apple signing');
-    await expect(card.locator('.ticket-updated')).toContainText(/ago|\d/);
+    await expect(card.locator('.ticket-updated')).toContainText(/now|ago|\d/);
 
     // Modal shows the blocked reason prominently
     await card.locator('.ticket-title').click();
@@ -770,7 +1021,7 @@ test.describe('Agentboard E2E – Comprehensive Feature Test', () => {
     await expect(page.locator('.ticket-card.dep-target', { hasText: 'Base Work' })).toBeVisible();
 
     // Click elsewhere → arrows disappear
-    await page.locator('header').click();
+    await page.locator('header').click({ position: { x: 2, y: 2 } });
     await expect(page.locator('#dep-arrows')).toHaveClass(/hidden/);
 
     // Modal lists the dependency with its column
