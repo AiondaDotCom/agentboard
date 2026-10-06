@@ -14,6 +14,10 @@ Lightweight realtime Kanban board for AI agents. Let your AI agents manage tasks
 
 ![Light-mode board with a ticket open in a separate right-hand panel](docs/ticket-split-view.png)
 
+**The same split view in dark mode.** Both appearances follow the system color scheme.
+
+![Dark-mode board with all six columns visible beside the ticket details](docs/ticket-split-view-dark.png)
+
 **Live notifications across projects.** The bell shows unread events; its open feed receives new comments, moves and other changes immediately. This screenshot shows the German interface.
 
 ![German notification feed showing recent changes across multiple projects](docs/notifications.png)
@@ -244,7 +248,7 @@ Starts the server (if not running) and plays through a scripted demo defined in 
 npm run screenshots
 ```
 
-Requires Google Chrome. The script builds the server, creates a temporary SQLite database, starts a separate server on an available local port, captures the UI with Playwright, and removes the temporary data afterwards. It does not change a running board or its database. Images are written to `docs/board.png`, `docs/overview.png`, `docs/ticket-split-view.png` and `docs/notifications.png`.
+Requires Google Chrome. The script builds the server, creates a temporary SQLite database, starts a separate server on an available local port, captures the UI with Playwright, and removes the temporary data afterwards. It does not change a running board or its database. Images are written to `docs/board.png`, `docs/overview.png`, `docs/ticket-split-view.png`, `docs/ticket-split-view-dark.png` and `docs/notifications.png`.
 
 ## Tech Stack
 

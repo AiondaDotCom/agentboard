@@ -107,6 +107,10 @@ try {
       'Every column must be fully visible in the split-view screenshot');
   }
   await capture('ticket-split-view.png');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('.modal-ticket')).backgroundColor !== 'rgb(255, 255, 255)');
+  await capture('ticket-split-view-dark.png');
+  await page.emulateMedia({ colorScheme: 'light' });
   await page.locator('#ticket-modal .modal-close').click();
   await page.locator('#ticket-modal').waitFor({ state: 'hidden' });
   await page.locator('#current-project-name').click();
