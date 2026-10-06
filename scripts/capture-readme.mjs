@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
+import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { AgentboardDB } from '../dist/db/database.js';
 import { BoardService } from '../dist/services/board.service.js';
@@ -92,10 +93,20 @@ try {
   await capture('board.png');
 
   await page.emulateMedia({ colorScheme: 'light' });
+  // Show all six columns beside the panel so clipping cannot look like an overlay.
+  await page.setViewportSize({ width: 2560, height: 1200 });
   await page.locator(`[data-ticket-id="${detailTicket.id}"] .ticket-title`).click();
   await page.locator('#modal-comments .modal-comment').first().waitFor();
   await page.waitForFunction(() => getComputedStyle(document.querySelector('.modal-ticket')).backgroundColor === 'rgb(255, 255, 255)');
-  await capture('ticket-panel.png');
+  const boardBounds = await page.locator('#board').boundingBox();
+  const panelBounds = await page.locator('#ticket-modal').boundingBox();
+  assert.ok(boardBounds.x + boardBounds.width <= panelBounds.x, 'Ticket panel must sit beside the board');
+  for (const column of await page.locator('#board .column').all()) {
+    const bounds = await column.boundingBox();
+    assert.ok(bounds.x >= boardBounds.x && bounds.x + bounds.width <= panelBounds.x,
+      'Every column must be fully visible in the split-view screenshot');
+  }
+  await capture('ticket-split-view.png');
   await page.locator('#ticket-modal .modal-close').click();
   await page.locator('#ticket-modal').waitFor({ state: 'hidden' });
   await page.locator('#current-project-name').click();

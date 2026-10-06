@@ -10,9 +10,9 @@ Lightweight realtime Kanban board for AI agents. Let your AI agents manage tasks
 
 ![Project overview showing three projects and their per-column ticket counts](docs/overview.png)
 
-**Ticket details beside the board.** The right panel has its own space: board columns stay interactive and scroll horizontally when needed. Descriptions, comments and revision history update live.
+**Ticket details beside all six board columns.** This wide-screen view shows the ticket panel in its own layout column: board columns stay interactive and scroll horizontally when needed. Descriptions, comments and revision history update live.
 
-![Light-mode board with a ticket open in a separate right-hand panel](docs/ticket-panel.png)
+![Light-mode board with a ticket open in a separate right-hand panel](docs/ticket-split-view.png)
 
 **Live notifications across projects.** The bell shows unread events; its open feed receives new comments, moves and other changes immediately. This screenshot shows the German interface.
 
@@ -244,7 +244,7 @@ Starts the server (if not running) and plays through a scripted demo defined in 
 npm run screenshots
 ```
 
-Requires Google Chrome. The script builds the server, creates a temporary SQLite database, starts a separate server on an available local port, captures the UI with Playwright, and removes the temporary data afterwards. It does not change a running board or its database. Images are written to `docs/board.png`, `docs/overview.png`, `docs/ticket-panel.png` and `docs/notifications.png`.
+Requires Google Chrome. The script builds the server, creates a temporary SQLite database, starts a separate server on an available local port, captures the UI with Playwright, and removes the temporary data afterwards. It does not change a running board or its database. Images are written to `docs/board.png`, `docs/overview.png`, `docs/ticket-split-view.png` and `docs/notifications.png`.
 
 ## Tech Stack
 
