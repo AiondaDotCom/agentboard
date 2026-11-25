@@ -1314,6 +1314,26 @@ document.getElementById('ticket-process')?.addEventListener('process-count', (ev
   document.getElementById('modal-process-count').textContent = event.detail > 0 ? `(${event.detail})` : '';
 });
 
+// Ticket as full page (like Jira): the board steps back; the choice survives reloads.
+function setTicketFullPage(full) {
+  document.body.classList.toggle('ticket-full', full);
+  const btn = document.getElementById('ticket-fullpage');
+  if (!btn) return;
+  const label = i18n.t(full ? 'Show ticket beside the board' : 'Open ticket as full page');
+  btn.setAttribute('aria-pressed', String(full));
+  btn.setAttribute('aria-label', label);
+  btn.title = label;
+  btn.firstElementChild.innerHTML = full ? '&#x2921;' : '&#x2922;';
+  // Dependency arrows are drawn over the board; they must not survive its hiding
+  window.dispatchEvent(new Event('resize'));
+}
+setTicketFullPage(localStorage.getItem('agentboard.ticketFull') === '1');
+document.getElementById('ticket-fullpage')?.addEventListener('click', () => {
+  const full = !document.body.classList.contains('ticket-full');
+  localStorage.setItem('agentboard.ticketFull', full ? '1' : '0');
+  setTicketFullPage(full);
+});
+
 // Activity feed can be folded away; the choice survives reloads.
 function setActivityCollapsed(collapsed) {
   const feed = document.getElementById('activity-feed');

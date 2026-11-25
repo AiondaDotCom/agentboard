@@ -29,6 +29,8 @@
     "Flow": "Pfeil",
     "Steps and flows": "Schritte und Pfeile",
     "Show large": "Groß anzeigen",
+    "Open ticket as full page": "Ticket auf ganzer Seite öffnen",
+    "Show ticket beside the board": "Ticket wieder neben dem Board zeigen",
     "Show small": "Verkleinern",
     "Click a step or arrow to copy its sub-ID.": "Klick auf einen Schritt oder Pfeil, um seine Unter-ID zu kopieren.",
     "Unable to load process diagrams": "Abläufe konnten nicht geladen werden",

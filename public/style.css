@@ -2392,7 +2392,17 @@ body:has(.ticket-panel:not(.hidden)) { height: 100dvh; }
   #ticket-modal .modal-side { position: static; order: 1; }
 }
 
+/* Ticket as full page: the board steps back, content stays at a readable width */
+.modal-fullpage { background: none; border: none; color: var(--text-dim); font-size: 20px; line-height: 1; padding: 0 4px; cursor: pointer; margin-left: auto; transition: color 0.2s; }
+.modal-fullpage:hover, .modal-fullpage[aria-pressed="true"] { color: var(--text); }
+/* app.js sets display:grid inline on #board, hence !important */
+body.ticket-full:has(.ticket-panel:not(.hidden)) #board { display: none !important; }
+body.ticket-full #ticket-modal { flex: 1 1 auto; }
+body.ticket-full #ticket-modal .modal-ticket { border-width: 0; }
+body.ticket-full #ticket-modal .modal-body { padding-inline: max(32px, calc((100% - 1440px) / 2)); }
+
 @media (max-width: 760px), (max-width: 1000px) and (pointer: coarse) {
+  .modal-fullpage { display: none; }
   body:has(.ticket-panel:not(.hidden)) { height: auto; }
   .board-workspace { flex-direction: column; flex: none; }
   #ticket-modal { flex: none; width: 100%; height: 85vh; height: 85dvh; }

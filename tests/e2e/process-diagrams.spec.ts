@@ -124,3 +124,32 @@ test('no flow line crosses a shape it does not belong to', async ({ page, reques
   expect(result.segments).toBeGreaterThan(IMPROVE.flows.length * 2);
   expect(result.hits).toEqual([]);
 });
+
+// Ticket as full page (like Jira); stays full page after a reload (⌘R)
+test('ticket opens as full page and stays so after reload', async ({ page, request }) => {
+  const db = new Database(path.resolve(process.env['DB_PATH'] || 'agentboard-e2e.db'), { readonly: true });
+  const { value: key } = db.prepare("SELECT value FROM settings WHERE key = 'admin_api_key'").get() as { value: string };
+  db.close();
+  const admin = { 'X-Admin-Key': key };
+  const project = (await (await request.post('/api/projects', { headers: admin, data: { name: 'Full page ' + Date.now() } })).json()) as { id: string };
+  const agent = (await (await request.post('/api/agents', { headers: admin, data: { name: 'Full page ' + Date.now() } })).json()) as { apiKey: string };
+  const ticket = (await (await request.post(`/api/projects/${project.id}/tickets`, { headers: { 'X-Api-Key': agent.apiKey }, data: { title: 'Wide ticket' } })).json()) as { id: string };
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.addInitScript(() => localStorage.setItem('agentboard.language', 'de'));
+  await page.request.post('/api/auth/login', { data: { key } });
+  await page.goto(`/projects/${project.id}/tickets/${ticket.id}`);
+  const panel = page.locator('#ticket-modal');
+  await expect(page.locator('#modal-title')).toHaveText('Wide ticket');
+  const narrow = (await panel.boundingBox())!.width;
+  await expect(page.locator('#board')).toBeVisible();
+  const toggle = page.getByRole('button', { name: 'Ticket auf ganzer Seite öffnen' });
+  await toggle.click();
+  await expect(page.locator('#board')).toBeHidden();
+  expect((await panel.boundingBox())!.width).toBeGreaterThan(narrow + 300);
+  await page.reload();
+  await expect(page.locator('#modal-title')).toHaveText('Wide ticket');
+  await expect(page.locator('#board')).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Ticket wieder neben dem Board zeigen' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Ticket wieder neben dem Board zeigen' }).click();
+  await expect(page.locator('#board')).toBeVisible();
+});
