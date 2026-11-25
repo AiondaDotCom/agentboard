@@ -7,6 +7,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { VISUAL_REVIEW_INSTRUCTIONS } from './services/html-drafts.js';
 import type { BoardService } from './services/board.service.js';
 import { BATCH_OPS, MAX_BATCH_OPS } from './types.js';
 import type { Ticket } from './types.js';
@@ -23,7 +24,7 @@ export const MCP_INSTRUCTIONS =
   '(e.g. creating several tickets, updating/moving multiple tickets, or any mix of operations), ' +
   'ALWAYS use the `batch` tool instead of individual calls. One batch call executes many ' +
   'operations in a single round-trip – dramatically faster and cheaper than sequential tool calls. ' +
-  'Use individual tools only for single, stand-alone operations.';
+  'Use individual tools only for single, stand-alone operations. ' + VISUAL_REVIEW_INSTRUCTIONS;
 
 // ---------------------------------------------------------------------------
 // Tool registration (shared between embedded + standalone)
@@ -62,6 +63,23 @@ export function registerMcpTools(
       return { ...r, result: { ...page, data: page.data.map(({ description, ...rest }) => rest) } };
     });
   }));
+
+  // HTML source is stored separately from Markdown, with version-bound visual evidence.
+  const draftTarget = { project_id: z.string(), ticket_id: z.string() };
+  const draftVersion = { ...draftTarget, draft_id: z.string(), version: z.number().int().positive() };
+  mcp.registerTool('save_html_draft', { description: 'Create a static HTML/CSS mockup at a ticket or save a new immutable version. Use draft_id plus expected_version when updating. Multiple named drafts represent different screens. Returns preview URL, version and pending review status. ' + VISUAL_REVIEW_INSTRUCTIONS, inputSchema:
+    { ...draftTarget, title: z.string(), html: z.string().max(524288), draft_id: z.string().optional(), expected_version: z.number().int().positive().optional() } },
+    a => wrap(() => service.htmlDrafts.save(a.project_id, a.ticket_id, a.title, a.html, agentId, a.draft_id, a.expected_version)));
+  mcp.registerTool('list_html_drafts', { description: 'List all HTML draft versions at a ticket, with screenshots and review status (without HTML source). ' + VISUAL_REVIEW_INSTRUCTIONS, inputSchema:
+    draftTarget }, a => wrap(() => service.htmlDrafts.list(a.project_id, a.ticket_id)));
+  mcp.registerTool('get_html_draft', { description: 'Read an exact HTML draft version and its preview URL, source and evidence. ' + VISUAL_REVIEW_INSTRUCTIONS, inputSchema:
+    draftVersion }, a => wrap(() => service.htmlDrafts.get(a.project_id, a.ticket_id, a.draft_id, a.version)));
+  mcp.registerTool('add_draft_screenshot', { description: 'Attach an actual browser PNG screenshot to the exact draft version inspected. png_base64 is raw base64 (no data URL); width/height are browser viewport CSS pixels. Never upload fabricated evidence. Uploading alone does not mark a draft reviewed.', inputSchema:
+    { ...draftVersion, png_base64: z.string().max(8388608), width: z.number().int(), height: z.number().int(), theme: z.enum(['light','dark']) } },
+    a => wrap(() => service.htmlDrafts.screenshot(a.project_id, a.ticket_id, a.draft_id, a.version, a, agentId)));
+  mcp.registerTool('review_html_draft', { description: 'Record findings only AFTER actually viewing the attached screenshots. Passing requires mobile and desktop in both light and dark mode. No browser access: leave pending. This is AI visual review, NEVER human approval. ' + VISUAL_REVIEW_INSTRUCTIONS, inputSchema:
+    { ...draftVersion, status: z.enum(['passed','needs_changes']), findings: z.string(), screenshot_ids: z.array(z.string()).min(1), visually_inspected: z.literal(true) } },
+    a => wrap(() => service.htmlDrafts.review(a.project_id, a.ticket_id, a.draft_id, a.version, a.status, a.findings, a.screenshot_ids, a.visually_inspected, agentId)));
 
   // --- Projects ---
   mcp.tool('list_projects', 'List all projects on the board', {},

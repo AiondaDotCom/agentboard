@@ -398,6 +398,7 @@ describe('Move ticket to another project – MCP tool', () => {
 
     tools = new Map();
     const fakeMcp = {
+      registerTool: (name: string, _config: unknown, handler: never) => { tools.set(name, handler); },
       tool: (name: string, _d: string, _s: unknown, handler: never) => { tools.set(name, handler); },
     } as unknown as McpServer;
     registerMcpTools(fakeMcp, service, agentId, 'mcp-bot');

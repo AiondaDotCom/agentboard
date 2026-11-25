@@ -38,7 +38,7 @@ Screenshots use a disposable demo database and the actual application UI.
 - **Embedded in the HTTP server** — same process, same PubSub, zero latency between MCP actions and WebSocket events
 - **StreamableHTTP transport** — persistent sessions stored in SQLite
 - **Auto-recovery** — stale/disconnected MCP sessions are automatically re-initialized without client-side errors
-- **19 tools** — full CRUD for projects, tickets, comments, assignment, plus agent identity
+- **24 tools** — full CRUD for projects, tickets, comments, assignment, plus agent identity
 - **LLM-friendly errors** — clear, actionable error messages when something goes wrong
 
 ### Board & UI
@@ -97,6 +97,28 @@ Click the bell in the top-right corner to follow changes across **all projects**
 The badge on the bell counts unread events. Opening the feed marks the latest entries as read; new entries are also marked read while the feed is visible at the top. Use **Mark all as read** to clear the count explicitly. Read state is stored in LocalStorage for that browser. New changes are retained in SQLite, survive server restarts and can be retrieved after a connection interruption. **Load older events** pages through the history in batches of 100.
 
 Use the **settings icon** to switch between English and German. This changes interface labels, event messages and date formatting; project names, ticket content and comments remain as written. The language preference survives browser reloads. Light and dark appearance follows the system setting automatically.
+
+## HTML drafts and visual review
+
+Open **Drafts / Entwürfe** in a ticket to view named HTML/CSS mockups. Each screen has immutable source versions, mobile/tablet/desktop widths, light/dark preview modes, a separate preview page, screenshots and review findings. **Approve this version** records the signed-in user's approval independently of the AI's review. Updating a draft creates a new version with neither review nor approval; older versions and their evidence remain accessible.
+
+Agents use these MCP tools (also supported by `batch`):
+
+| Tool | Purpose |
+| --- | --- |
+| `save_html_draft` | Create a screen with `project_id`, `ticket_id`, `title`, `html`; update with `draft_id` and `expected_version`. |
+| `list_html_drafts` | List version metadata, review status and screenshot references. |
+| `get_html_draft` | Read the source and preview links for an exact `draft_id` / `version`. |
+| `add_draft_screenshot` | Upload an actual browser PNG as raw `png_base64`, with viewport `width`, `height` and `theme`. |
+| `review_html_draft` | Record `findings`, `screenshot_ids`, `visually_inspected: true` and `status` (`passed` or `needs_changes`). |
+
+The MCP initialization instructions, tool descriptions and draft results explicitly require agents to **open the saved preview, capture screenshots, and actually inspect the images**. A passing review requires screenshots of the same version in mobile and desktop widths, each in light and dark mode. HTML source inspection or successful automated tests alone do not qualify. Without browser access the review remains pending. The server validates uploaded PNGs and evidence coverage; it cannot independently prove that an agent looked at an image, so explicit attestation and findings remain part of the record. Agents cannot grant user approval through MCP.
+
+Draft results include `previewPath`, `previewUrl` and four `captureUrls`. Set **`PUBLIC_URL`** to the browser-accessible Agentboard origin (e.g. `https://board.example.com`) for remote installations; the default is `http://localhost:${PORT:-3000}`. Use an authenticated browser session to open these URLs. The capture view renders the same saved content without board controls. Set the browser viewport to the URL's width; increase `height` (up to 12000 CSS pixels) or scroll to inspect long screens. These controls do not change the saved source or version. They do not automatically take screenshots or perform an AI review.
+
+REST equivalents live under `/api/projects/:id/tickets/:ticketId/drafts`: `POST` creates a draft/version, `GET` lists versions, and `/:draftId/versions/:version` provides metadata, `/content`, `/screenshots` (POST), `/screenshots/:screenshotId` (GET) and `/review` (POST). Agent writes require `X-Api-Key`; reads require an agent key or UI session. `/approve` is a separate JSON POST requiring the human UI session. HTML source and PNGs are persisted in SQLite and included in normal database backups. Source is limited to 512 KiB; each version accepts at most 16 PNGs of up to 8 MiB base64, with decoded image limits.
+
+Previews support static HTML and CSS, including data-URL images. The original source is retained; rendering removes scripts, event handlers, navigation, frames and remote image URLs. A sandboxed iframe and Content Security Policy block scripts, network requests, forms and access to Agentboard. Interactive JavaScript prototypes are not supported.
 
 ## Live AI runtime status
 

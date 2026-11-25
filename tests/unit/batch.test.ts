@@ -78,7 +78,7 @@ describe('Batch operations', () => {
 
   describe('BoardService.executeBatch – operations', () => {
     it('supports every advertised op', () => {
-      expect(BATCH_OPS).toHaveLength(17);
+      expect(BATCH_OPS).toHaveLength(22);
 
       const setup = service.executeBatch([
         { op: 'create_project', args: { name: 'p2', description: 'd', columns: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }] } },
@@ -253,6 +253,7 @@ describe('Batch operations', () => {
     beforeEach(() => {
       tools = new Map();
       const fakeMcp = {
+      registerTool: (name: string, _config: unknown, handler: ToolHandler) => { tools.set(name, handler); },
         tool: (name: string, _desc: string, _schema: unknown, handler: ToolHandler) => {
           tools.set(name, handler);
         },

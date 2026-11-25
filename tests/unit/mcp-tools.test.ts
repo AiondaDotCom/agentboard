@@ -14,6 +14,7 @@ type ToolHandler = (args: Record<string, unknown>) => Promise<ToolResult>;
 function collectTools(service: BoardService, agentId: string, agentName: string): Map<string, ToolHandler> {
   const tools = new Map<string, ToolHandler>();
   const fakeMcp = {
+    registerTool: (name: string, _config: unknown, handler: ToolHandler) => { tools.set(name, handler); },
     tool: (name: string, _desc: string, _schema: unknown, handler: ToolHandler) => {
       tools.set(name, handler);
     },
@@ -46,12 +47,12 @@ describe('MCP tools', () => {
     db.close();
   });
 
-  it('registers all 19 tools', () => {
+  it('registers all 24 tools', () => {
     expect([...tools.keys()].sort()).toEqual([
-      'add_comment', 'assign_ticket', 'batch', 'create_project', 'create_ticket',
-      'delete_project', 'delete_ticket', 'get_comments', 'get_project',
-      'get_ticket', 'get_ticket_history', 'list_agents', 'list_projects',
-      'list_tickets', 'move_ticket', 'move_ticket_to_project', 'update_project',
+      'add_comment', 'add_draft_screenshot', 'assign_ticket', 'batch', 'create_project', 'create_ticket',
+      'delete_project', 'delete_ticket', 'get_comments', 'get_html_draft', 'get_project',
+      'get_ticket', 'get_ticket_history', 'list_agents', 'list_html_drafts', 'list_projects',
+      'list_tickets', 'move_ticket', 'move_ticket_to_project', 'review_html_draft', 'save_html_draft', 'update_project',
       'update_ticket', 'whoami',
     ]);
   });

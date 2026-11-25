@@ -123,3 +123,21 @@ CREATE TABLE IF NOT EXISTS board_events (
   payload TEXT NOT NULL,
   timestamp TEXT NOT NULL
 );
+
+-- Immutable HTML source versions; review and human approval are version-specific.
+CREATE TABLE IF NOT EXISTS html_draft_versions (
+  draft_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  ticket_id TEXT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+  data TEXT NOT NULL,
+  PRIMARY KEY (draft_id, version)
+);
+CREATE INDEX IF NOT EXISTS idx_html_drafts_ticket ON html_draft_versions(ticket_id);
+CREATE TABLE IF NOT EXISTS html_draft_screenshots (
+  id TEXT PRIMARY KEY,
+  draft_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  data TEXT NOT NULL,
+  png BLOB NOT NULL,
+  FOREIGN KEY (draft_id, version) REFERENCES html_draft_versions(draft_id, version) ON DELETE CASCADE
+);

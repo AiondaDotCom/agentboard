@@ -123,6 +123,11 @@ export const BATCH_OPS = [
   'get_comments',
   'get_ticket_history',
   'list_agents',
+  'save_html_draft',
+  'list_html_drafts',
+  'get_html_draft',
+  'add_draft_screenshot',
+  'review_html_draft',
 ] as const;
 
 export type BatchOp = (typeof BATCH_OPS)[number];

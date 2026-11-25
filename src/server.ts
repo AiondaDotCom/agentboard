@@ -24,6 +24,7 @@ import { createProjectRoutes } from './api/routes/projects.js';
 import { createTicketRoutes, createHumanTicketRoutes } from './api/routes/tickets.js';
 import { createAuditRoutes } from './api/routes/audit.js';
 import { createBatchRoutes } from './api/routes/batch.js';
+import { createHtmlDraftRoutes } from './api/routes/html-drafts.js';
 import { createRuntimeRoutes } from './api/routes/runtime.js';
 import { createAuditMiddleware } from './api/middleware/audit.js';
 
@@ -68,7 +69,7 @@ if (envRuntimeKey) db.setSetting('runtime_api_key', envRuntimeKey);
 // ---------------------------------------------------------------------------
 const app: express.Express = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '12mb' }));
 
 // ---------------------------------------------------------------------------
 // Auth routes (public – no session required)
@@ -109,6 +110,7 @@ app.use('/api', createAuditMiddleware(db));
 // REST routes – all go through the service layer
 app.use('/api/agents', createAgentRoutes(service));
 app.use('/api/projects', createProjectRoutes(service));
+app.use('/api/projects/:id', createHtmlDraftRoutes(service, cookie => { const token = parseCookies(cookie)['agentboard_session']; return token !== undefined && token !== '' && db.hasSession(token); }));
 app.use('/api/projects/:id', createTicketRoutes(service));
 app.use('/api/projects/:id', createHumanTicketRoutes(service));
 app.use('/api/audit', createAuditRoutes(service));

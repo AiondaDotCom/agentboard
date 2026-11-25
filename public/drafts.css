@@ -1,0 +1,194 @@
+.drafts-root {
+  min-width: 0;
+}
+.draft-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+  margin: 16px 0;
+}
+.draft-controls label {
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-width: 0;
+}
+.draft-controls select,
+.draft-controls input,
+.draft-controls button,
+.draft-action {
+  font: inherit;
+  color: var(--text);
+  background: var(--control-bg);
+  border: 1px solid var(--border-light);
+  border-radius: 9px;
+  padding: 9px 12px;
+  min-height: 40px;
+}
+.draft-controls select {
+  max-width: 100%;
+}
+.draft-picker {
+  flex: 1 1 220px;
+}
+.draft-controls input {
+  width: 90px;
+}
+.draft-action {
+  display: inline-block;
+  cursor: pointer;
+  text-decoration: none;
+  font-size: 13px;
+}
+.draft-action:hover {
+  border-color: var(--accent);
+}
+.draft-action:focus-visible,
+.draft-controls :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.draft-action:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+.draft-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.draft-badge {
+  font-size: 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 20px;
+  padding: 6px 10px;
+  color: var(--warning-text);
+}
+.draft-badge.passed {
+  color: var(--success-text);
+}
+.draft-badge.needs_changes {
+  color: var(--danger-text);
+}
+.draft-caption {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin: 10px 0;
+}
+.draft-stage {
+  overflow: auto;
+  width: 100%;
+  max-height: 1200px;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  background: var(--inset-bg);
+  padding: 16px;
+  box-sizing: border-box;
+}
+.draft-stage iframe {
+  display: block;
+  border: 0;
+  margin: 0 auto;
+  max-width: none;
+  background: white;
+  box-shadow: var(--shadow);
+}
+.draft-findings {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+  font-size: 14px;
+  padding: 12px 0;
+}
+.draft-shots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+.draft-shots figure {
+  margin: 0;
+  min-width: 0;
+}
+.draft-shots img {
+  width: 100%;
+  height: 150px;
+  object-fit: contain;
+  object-position: top;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--inset-bg);
+}
+.draft-shots figcaption {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 6px 0;
+}
+.draft-preview-page {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+.draft-preview-page main {
+  max-width: 1600px;
+  margin: auto;
+  padding: 24px;
+}
+.draft-preview-page h1 {
+  font-size: 24px;
+  margin: 18px 0 8px;
+}
+.draft-preview-page a {
+  color: var(--accent);
+}
+.draft-error {
+  color: var(--danger-text);
+  padding: 12px;
+}
+@media (max-width: 600px) {
+  .draft-preview-page main {
+    padding: 12px;
+  }
+  .draft-stage {
+    padding: 0;
+    border-radius: 8px;
+  }
+  .draft-controls {
+    gap: 8px;
+  }
+  .draft-action {
+    white-space: normal;
+  }
+}
+
+/* The same saved iframe, without board chrome, for reproducible screenshot evidence. */
+.draft-capture main {
+  max-width: none;
+  padding: 0;
+}
+.draft-capture #draft-back,
+.draft-capture h1,
+.draft-capture h3,
+.draft-capture .draft-controls,
+.draft-capture .draft-state,
+.draft-capture .draft-caption,
+.draft-capture .draft-findings,
+.draft-capture .draft-shots {
+  display: none;
+}
+.draft-capture .draft-stage {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  max-height: none;
+  overflow: visible;
+}
+.draft-capture .draft-stage iframe {
+  margin: 0;
+  box-shadow: none;
+}

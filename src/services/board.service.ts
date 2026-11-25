@@ -7,6 +7,7 @@
 // ---------------------------------------------------------------------------
 
 import { v4 as uuidv4 } from 'uuid';
+import { HtmlDraftService, type ScreenshotInput } from './html-drafts.js';
 import type { AgentboardDB } from '../db/database.js';
 import { pubsub, EVENTS } from '../graphql/pubsub.js';
 import { BATCH_OPS, COLUMN_ID_RE, DEFAULT_COLUMNS, DEFAULT_PRIORITY, MAX_BATCH_OPS, PRIORITIES, WORK_TYPES, WORK_TYPE_FILTERS } from '../types.js';
@@ -47,7 +48,13 @@ function optionalCount(value: number | undefined, field: string): number {
 }
 
 export class BoardService {
-  constructor(private db: AgentboardDB) {}
+  readonly htmlDrafts: HtmlDraftService;
+  constructor(private db: AgentboardDB) {
+    this.htmlDrafts = new HtmlDraftService(db, (projectId, ticketId, actorId, detail) => {
+      this.audit(actorId, 'HTML_DRAFT', `/projects/${projectId}/tickets/${ticketId}`, detail);
+      this.boardEvent('ticket_updated', actorId, this.requireTicket(projectId, ticketId), undefined, detail);
+    });
+  }
 
   private boardEvent(kind: string, actorId: string | null, ticket?: Ticket, project?: Project, detail?: string): void {
     const owner = project ?? (ticket ? this.db.getProject(ticket.projectId) : undefined);
@@ -992,6 +999,19 @@ export class BoardService {
         return this.getRevisionsByTicket(str('project_id'), str('ticket_id'), actorId);
       case 'list_agents':
         return this.getAllAgents(actorId);
+      case 'save_html_draft':
+        if (actorId === null || actorId === '') throw new ValidationError('Agent identity required');
+        return this.htmlDrafts.save(str('project_id'), str('ticket_id'), str('title'), str('html'), actorId, optStr('draft_id'), args['expected_version'] as number | undefined);
+      case 'list_html_drafts':
+        return this.htmlDrafts.list(str('project_id'), str('ticket_id'));
+      case 'get_html_draft':
+        return this.htmlDrafts.get(str('project_id'), str('ticket_id'), str('draft_id'), args['version'] as number);
+      case 'add_draft_screenshot':
+        if (actorId === null || actorId === '') throw new ValidationError('Agent identity required');
+        return this.htmlDrafts.screenshot(str('project_id'), str('ticket_id'), str('draft_id'), args['version'] as number, args as unknown as ScreenshotInput, actorId);
+      case 'review_html_draft':
+        if (actorId === null || actorId === '') throw new ValidationError('Agent identity required');
+        return this.htmlDrafts.review(str('project_id'), str('ticket_id'), str('draft_id'), args['version'] as number, str('status'), str('findings'), args['screenshot_ids'] as string[], args['visually_inspected'] as boolean, actorId);
     }
   }
 

@@ -261,6 +261,7 @@ describe('Ticket priority – MCP tools', () => {
 
     tools = new Map();
     const fakeMcp = {
+      registerTool: (name: string, _config: unknown, handler: ToolHandler) => { tools.set(name, handler); },
       tool: (name: string, _desc: string, _schema: unknown, handler: ToolHandler) => {
         tools.set(name, handler);
       },

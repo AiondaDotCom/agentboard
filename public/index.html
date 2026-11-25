@@ -8,6 +8,7 @@
   <script src="/i18n.js"></script>
   <link rel="stylesheet" href="/style.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="/drafts.css">
 </head>
 <body>
   <header>
@@ -70,10 +71,12 @@
           <div id="modal-deps" class="modal-deps" style="display:none"></div>
 
           <div class="modal-tabs">
+            <button class="modal-tab" data-tab="drafts" onclick="switchTab('drafts')" data-i18n="Drafts">Drafts</button>
             <button class="modal-tab active" data-tab="comments" onclick="switchTab('comments')" data-i18n="Comments">Comments</button>
             <button class="modal-tab" data-tab="history" onclick="switchTab('history')" data-i18n="History">History</button>
           </div>
 
+          <div id="tab-drafts" class="modal-tab-content hidden"><div id="ticket-drafts" class="drafts-root"></div></div>
           <div id="tab-comments" class="modal-tab-content">
             <div id="modal-comments" class="modal-comments"></div>
           </div>
@@ -213,6 +216,7 @@
     </div>
   </div>
 
+  <script src="/drafts.js"></script>
   <script src="/app.js"></script>
   <script src="/notifications.js"></script>
 </body>

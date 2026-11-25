@@ -1229,6 +1229,8 @@ async function openModal(projectId, ticketId, { fromRoute = false, refresh = fal
     });
   }
 
+  void htmlDrafts.render(document.getElementById('ticket-drafts'), { projectId, id: ticketId });
+
   // Reset to comments tab
   if (!refresh) switchTab('comments');
 
@@ -1683,7 +1685,12 @@ function subscribeGlobal(socket, id, eventName, fields) {
 function handleSubscriptionEvent(subId, data) {
   if (!data) return;
   if (subId === '12') {
-    if (data.boardEventAdded) boardNotifications.receive(data.boardEventAdded);
+    if (data.boardEventAdded) {
+      boardNotifications.receive(data.boardEventAdded);
+      if (data.boardEventAdded.ticketId === modalTarget?.id && data.boardEventAdded.detail?.includes('HTML draft')) {
+        void htmlDrafts.render(document.getElementById('ticket-drafts'), modalTarget);
+      }
+    }
     return;
   }
 

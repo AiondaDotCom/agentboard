@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import fs from 'node:fs';
+import type { DraftVersion, DraftScreenshot, DraftReview } from '../services/html-drafts.js';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 import type { Database as DatabaseType } from 'better-sqlite3';
@@ -129,6 +130,36 @@ interface RuntimeReportRow {
 // ---------------------------------------------------------------------------
 
 export class AgentboardDB {
+  saveHtmlDraft(draft: DraftVersion): void {
+    this.db.prepare('INSERT INTO html_draft_versions (draft_id, version, ticket_id, data) VALUES (?, ?, ?, ?)').run(draft.id, draft.version, draft.ticketId, JSON.stringify(draft));
+  }
+  getHtmlDraft(id: string, version: number): DraftVersion | undefined {
+    const row = this.db.prepare('SELECT data FROM html_draft_versions WHERE draft_id = ? AND version = ?').get(id, version) as { data: string } | undefined;
+    return row ? JSON.parse(row.data) as DraftVersion : undefined;
+  }
+  latestHtmlDraft(id: string): DraftVersion | undefined {
+    const row = this.db.prepare('SELECT data FROM html_draft_versions WHERE draft_id = ? ORDER BY version DESC LIMIT 1').get(id) as { data: string } | undefined;
+    return row ? JSON.parse(row.data) as DraftVersion : undefined;
+  }
+  listHtmlDrafts(ticketId: string): DraftVersion[] {
+    return (this.db.prepare('SELECT data FROM html_draft_versions WHERE ticket_id = ? ORDER BY draft_id, version DESC').all(ticketId) as { data: string }[]).map(r => JSON.parse(r.data) as DraftVersion);
+  }
+  reviewHtmlDraft(id: string, version: number, review: DraftReview): void {
+    this.db.prepare("UPDATE html_draft_versions SET data = json_set(data, '$.review', json(?)) WHERE draft_id = ? AND version = ?").run(JSON.stringify(review), id, version);
+  }
+  approveHtmlDraft(id: string, version: number): void {
+    this.db.prepare("UPDATE html_draft_versions SET data = json_set(data, '$.approvedAt', ?) WHERE draft_id = ? AND version = ?").run(new Date().toISOString(), id, version);
+  }
+  saveDraftScreenshot(id: string, version: number, shot: DraftScreenshot, png: Buffer): void {
+    this.db.prepare('INSERT INTO html_draft_screenshots (id, draft_id, version, data, png) VALUES (?, ?, ?, ?, ?)').run(shot.id, id, version, JSON.stringify(shot), png);
+  }
+  getDraftScreenshots(id: string, version: number): DraftScreenshot[] {
+    return (this.db.prepare('SELECT data FROM html_draft_screenshots WHERE draft_id = ? AND version = ? ORDER BY rowid').all(id, version) as { data: string }[]).map(r => JSON.parse(r.data) as DraftScreenshot);
+  }
+  getDraftScreenshotPng(id: string, version: number, screenshotId: string): Buffer | undefined {
+    return (this.db.prepare('SELECT png FROM html_draft_screenshots WHERE draft_id = ? AND version = ? AND id = ?').get(id, version, screenshotId) as { png: Buffer } | undefined)?.png;
+  }
+
   logBoardEvent(event: Omit<BoardEvent, 'id' | 'timestamp'>): BoardEvent {
     const timestamp = new Date().toISOString();
     const result = this.db.prepare('INSERT INTO board_events (payload, timestamp) VALUES (?, ?)')
