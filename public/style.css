@@ -830,6 +830,9 @@ select:focus {
 .activity-header {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
   padding: 10px 24px;
   font-size: 11px;
   font-weight: 700;
@@ -1098,8 +1101,8 @@ select:focus {
 }
 
 .modal-desc {
-  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Courier New', monospace;
-  font-size: 13px;
+  font-family: inherit;
+  font-size: 14px;
   line-height: 1.6;
   color: var(--text);
   background: var(--inset-bg);
@@ -1840,6 +1843,60 @@ tr.overview-flash {
 }
 .modal-drafts-section[hidden] { display: none; }
 
+/* 1/8: geöffnetes Ticket bekommt den Platz; das Audit-Protokoll (Technik-Log) tritt zurück */
+/* app.js setzt display:block inline – deshalb !important */
+body:has(.ticket-panel:not(.hidden)) #audit-panel { display: none !important; }
+
+/* 12: Tickettitel bleibt in der festen Kopfzeile sichtbar */
+.modal-header-ref {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+.modal-header-ref .modal-ticket-id { flex-shrink: 0; white-space: nowrap; }
+.modal-header-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+/* 3: Karten und Kopfzeile per Tastatur bedienbar – echte Knöpfe, aussehen wie vorher */
+.ticket-open,
+button.current-project-name,
+button.badge,
+button.logo-text {
+  font: inherit;
+  text-align: left;
+}
+.ticket-open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+.ticket-open:focus-visible,
+button.current-project-name:focus-visible,
+button.badge:focus-visible,
+button.logo-text:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+button.current-project-name { font-size: 13px; font-weight: 600; }
+button.badge { font-size: 12px; font-weight: 600; }
+button.logo-text { border: 0; padding: 0; cursor: pointer; font-size: 16px; font-weight: 600; }
+
+
 .modal-blocked {
   margin: 10px 0;
   padding: 10px 12px;
@@ -2165,7 +2222,12 @@ body:has(.modal-overlay:not(.hidden)) { overflow: hidden; }
   .logo-img { height: 26px; }
   .logo-text { font-size: 14px; letter-spacing: 1px; }
   .header-right { width: 100%; flex-basis: 100%; justify-content: flex-start; gap: 8px; }
-  .runtime-status { order: -2; width: 100%; line-height: 1.5; }
+  .runtime-status { order: 0; width: auto; line-height: 1.5; }
+  /* Handy: nur der Statuspunkt, Text bleibt für Screenreader und als Tooltip */
+  #runtime-status-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .header-right { gap: 6px; }
+  .logo-text { display: none; }
+  #logout-btn { display: none; }
   .current-project-name { order: -1; width: 100%; }
   .btn-small, .btn-copy, .btn-logout, .modal-close, .modal-tab,
   .badge, .current-project-name, .modal-project-select {
@@ -2254,17 +2316,22 @@ body:has(.modal-overlay:not(.hidden)) { overflow: hidden; }
 }
 
 @media (prefers-color-scheme: light) {
-  .logo-img { filter: brightness(0.5) saturate(1.4); }
-  header, .modal { box-shadow: var(--shadow); }
-  .ticket-card:hover { box-shadow: var(--shadow-hover); }
+  :root:not([data-theme="dark"]) .logo-img { filter: brightness(0.5) saturate(1.4); }
+  :root:not([data-theme="dark"]) header, :root:not([data-theme="dark"]) .modal { box-shadow: var(--shadow); }
+  :root:not([data-theme="dark"]) .ticket-card:hover { box-shadow: var(--shadow-hover); }
 }
+/* Darstellung manuell auf Hell gestellt */
+:root[data-theme="light"] .logo-img { filter: brightness(0.5) saturate(1.4); }
+:root[data-theme="light"] header, :root[data-theme="light"] .modal { box-shadow: var(--shadow); }
+:root[data-theme="light"] .ticket-card:hover { box-shadow: var(--shadow-hover); }
 
 /* Notification inbox and language controls share the adaptive header layout. */
 .settings-toggle { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; font-size: 21px; flex-shrink: 0; }
 .settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
 .settings-heading h2 { font-size: 20px; }
 .settings-dialog label { display: block; margin-bottom: 8px; font-size: 13px; color: var(--text-dim); }
-.settings-dialog #ui-language { width: 100%; margin: 0; }
+.settings-dialog #ui-language, .settings-dialog #ui-theme { display: block; width: 100%; margin: 0 0 18px; }
+.settings-dialog .settings-logout { display: block; width: 100%; margin-top: 6px; }
 .notification-bell { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 36px; flex-shrink: 0; }
 .notification-count { position: absolute; top: -7px; right: -7px; min-width: 19px; height: 19px; padding: 0 4px; border-radius: 10px; background: var(--red); color: white; font-size: 10px; line-height: 19px; font-weight: 700; }
 .notifications-panel { position: fixed; right: 16px; z-index: 110; width: min(460px, calc(100vw - 24px)); max-height: min(640px, calc(100dvh - 140px)); background: var(--surface-solid); border: 1px solid var(--border-light); border-radius: var(--radius); box-shadow: var(--shadow-hover); display: flex; flex-direction: column; overflow: hidden; }
@@ -2322,7 +2389,7 @@ body:has(.ticket-panel:not(.hidden)) { height: 100dvh; }
 
 @container (max-width: 640px) {
   #ticket-modal .modal-body { grid-template-columns: minmax(0, 1fr); gap: 20px; padding: 16px; }
-  #ticket-modal .modal-side { position: static; order: -1; }
+  #ticket-modal .modal-side { position: static; order: 1; }
 }
 
 @media (max-width: 760px), (max-width: 1000px) and (pointer: coarse) {

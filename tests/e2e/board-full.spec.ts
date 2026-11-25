@@ -742,13 +742,24 @@ test.describe('Agentboard E2E – Comprehensive Feature Test', () => {
     await login(page, adminKey);
     await navigateToProject(page, projectName);
 
-    // Activity feed should be visible
+    // Activity feed header is visible; the list starts collapsed so tickets get the height
     const feed = page.locator('#activity-feed');
     await expect(feed).toBeVisible();
-
-    // Should have at least 1 activity entry
     const items = page.locator('.activity-item');
+    const toggle = page.locator('#activity-toggle');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(items.first()).toBeHidden();
+
+    // Expanding shows the entries, and the choice survives a reload
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await expect(items.first()).toBeVisible();
+    await page.reload();
+    await expect(page.locator('.activity-item').first()).toBeVisible();
+
+    // Collapsing hides them again
+    await page.locator('#activity-toggle').click();
+    await expect(page.locator('.activity-item').first()).toBeHidden();
 
     // Activity count label
     await expect(page.locator('#activity-count')).toContainText(/\d+ event/);

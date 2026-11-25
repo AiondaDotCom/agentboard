@@ -105,7 +105,7 @@
         field('Appearance', theme),
         field('Preview height', height),
       );
-      const refresh = element('button', tr('Refresh'), 'draft-action');
+      const refresh = element('button', tr('Reload drafts'), 'draft-action');
       refresh.type = 'button';
       refresh.onclick = () => render(root, target);
       controls.append(refresh);

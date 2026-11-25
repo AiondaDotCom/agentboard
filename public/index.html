@@ -16,13 +16,13 @@
       <a href="/" class="logo-link" onclick="event.preventDefault(); showOverview()" title="Back to project overview" data-i18n-title="Back to project overview">
         <img src="/aionda_logo.png" alt="Aionda" class="logo-img">
       </a>
-      <span class="logo-text" onclick="showOverview()" style="cursor:pointer">AI agentboard</span>
+      <button type="button" class="logo-text" onclick="showOverview()">AI agentboard</button>
     </div>
     <div class="header-right">
-      <span id="current-project-name" class="current-project-name" style="display:none" onclick="showOverview()"></span>
+      <button type="button" id="current-project-name" class="current-project-name" style="display:none" onclick="showOverview()"></button>
       <button id="edit-columns-btn" data-i18n="⚙ Columns" class="btn-small btn-edit-columns" style="display:none" onclick="openColumnsModal()" title="Configure the board columns of this project" data-i18n-title="Configure the board columns of this project">&#9881;&#65039; Columns</button>
       <span id="runtime-status" class="runtime-status runtime-offline" title="No current runtime heartbeat" data-i18n-title="No current runtime heartbeat"><span class="runtime-dot"></span><span id="runtime-status-text" data-i18n="0 AIs working">0 AIs working</span></span>
-      <span id="agent-count" class="badge" onclick="openAgentsModal()" title="Show registered agents &amp; API keys" data-i18n-title="Show registered agents &amp; API keys">0 agents</span>
+      <button type="button" id="agent-count" class="badge" onclick="openAgentsModal()" title="Show registered agents &amp; API keys" data-i18n-title="Show registered agents &amp; API keys">0 agents</button>
       <button id="settings-toggle" class="settings-toggle btn-small" aria-label="Settings" title="Settings" data-i18n-aria-label="Settings" data-i18n-title="Settings" aria-haspopup="dialog" aria-controls="settings-dialog" aria-expanded="false"><span aria-hidden="true">&#9881;</span></button>
       <button id="notifications-toggle" class="notification-bell btn-small" aria-label="Notifications" aria-controls="notifications-panel" aria-expanded="false" data-i18n-aria-label="Notifications">
         <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
@@ -44,6 +44,9 @@
     <div class="settings-heading"><h2 id="settings-title" data-i18n="Settings">Settings</h2><button id="settings-close" class="btn-small" aria-label="Close dialog" data-i18n-aria-label="Close dialog">×</button></div>
     <label for="ui-language" data-i18n="Language">Language</label>
     <select id="ui-language" data-language-select aria-label="Language" data-i18n-aria-label="Language"><option value="en">English</option><option value="de">Deutsch</option></select>
+    <label for="ui-theme" data-i18n="Appearance">Appearance</label>
+    <select id="ui-theme" aria-label="Appearance" data-i18n-aria-label="Appearance"><option value="system" data-i18n="System">System</option><option value="light" data-i18n="Light">Light</option><option value="dark" data-i18n="Dark">Dark</option></select>
+    <button type="button" class="btn-logout settings-logout" onclick="logout()" data-i18n="Sign out">Sign out</button>
   </dialog>
   <dialog id="language-welcome" class="language-welcome"><h2>Language / Sprache</h2><p data-i18n="Choose your language">Choose your language</p><select data-language-select aria-label="Language / Sprache"><option value="en">English</option><option value="de">Deutsch</option></select><button id="language-continue" class="btn-small" data-i18n="Continue">Continue</button></dialog>
 
@@ -54,7 +57,7 @@
   <aside id="ticket-modal" class="ticket-panel hidden" aria-labelledby="modal-title">
     <div class="modal modal-ticket">
       <div class="modal-header">
-        <span id="modal-ticket-id" class="modal-ticket-id"></span>
+        <span class="modal-header-ref"><span id="modal-ticket-id" class="modal-ticket-id"></span><span id="modal-header-title" class="modal-header-title"></span></span>
         <button class="modal-close" aria-label="Close dialog" data-i18n-aria-label="Close dialog" onclick="closeModal()">&times;</button>
       </div>
 
@@ -184,7 +187,7 @@
   <div id="audit-panel" class="audit-panel hidden">
     <div class="audit-header">
       <span data-i18n="AUDIT LOG">AUDIT LOG</span>
-      <button id="audit-toggle" class="btn-small" data-i18n="Show">Show</button>
+      <button id="audit-toggle" class="btn-small" aria-controls="audit-list" aria-expanded="false" aria-label="Show audit log" data-i18n-aria-label="Show audit log" data-i18n="Show">Show</button>
     </div>
     <div id="audit-list" class="audit-list hidden"></div>
   </div>

@@ -87,7 +87,7 @@ test('HTML draft preview, isolation, versions and human approval', async ({
   });
   expect(v2.status()).toBe(201);
   await page
-    .getByRole('button', { name: 'Aktualisieren', exact: true })
+    .getByRole('button', { name: 'Entwürfe neu laden', exact: true })
     .click();
   await page.getByLabel('Ansicht und Version').selectOption(`${draft.id}:2`);
   await expect(page.locator('#ticket-drafts')).toContainText(

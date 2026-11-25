@@ -27,11 +27,18 @@
   padding: 9px 12px;
   min-height: 40px;
 }
+.draft-controls button {
+  font-size: 13px;
+}
 .draft-controls select {
   max-width: 100%;
 }
 .draft-picker {
-  flex: 1 1 220px;
+  flex: 1 1 100%;
+}
+.draft-picker select {
+  width: 100%;
+  min-width: 0;
 }
 .draft-controls input {
   width: 90px;

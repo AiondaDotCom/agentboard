@@ -713,6 +713,19 @@ function renderBoard(tickets, { preserveScroll = false } = {}) {
   reapplyAllAccessEffects();
 }
 
+// Card preview: Markdown markers are noise when skimming the board
+function plainPreview(markdown) {
+  return markdown
+    .split('\n')
+    .filter(line => !/^\s*#{1,6}\s/.test(line))
+    .join(' ')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[*_~`>]+/g, '')
+    .replace(/^\s*[-+]\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function createTicketCard(ticket) {
   const card = document.createElement('div');
   card.className = 'ticket-card';
@@ -740,9 +753,9 @@ function createTicketCard(ticket) {
 
   card.innerHTML = `
     <div class="ticket-id" title="${t('Click to copy full ID')}" onclick="event.stopPropagation(); copyId('${ticket.id}', this)">#${ticket.id.slice(0, 8)}</div>
-    <div class="ticket-title">${escapeHtml(ticket.title)}</div>
+    <div class="ticket-title"><button type="button" class="ticket-open" title="${t('Open ticket')}">${escapeHtml(ticket.title)}</button></div>
     ${ticket.blockedReason ? `<div class="ticket-blocked" title="${t('Blocked reason')}">&#x26d4; ${escapeHtml(ticket.blockedReason)}</div>` : ''}
-    ${ticket.description ? `<div class="ticket-desc">${escapeHtml(ticket.description)}</div>` : ''}
+    ${ticket.description ? `<div class="ticket-desc">${escapeHtml(plainPreview(ticket.description))}</div>` : ''}
     <div class="ticket-meta">
       ${priorityBadge(ticket, 'ticket-priority')}
       ${workTypeBadge(ticket, 'ticket-work-type')}
@@ -1116,6 +1129,7 @@ async function openModal(projectId, ticketId, { fromRoute = false, refresh = fal
 
   // Title
   document.getElementById('modal-title').textContent = ticket.title;
+  document.getElementById('modal-header-title').textContent = ticket.title;
 
   // Details sidebar: author
   const author = ticket.agentId ? (agents[ticket.agentId] || { name: '???' }) : null;
@@ -1210,8 +1224,10 @@ async function openModal(projectId, ticketId, { fromRoute = false, refresh = fal
       div.className = 'modal-revision';
 
       const fieldLabel = t(r.field);
-      const oldVal = r.oldValue || t('(empty)');
-      const newVal = r.newValue || t('(empty)');
+      const agentField = r.field === 'assigneeId' || r.field === 'agentId';
+      const readable = v => (agentField && v && agents[v]) ? agents[v].name : v;
+      const oldVal = readable(r.oldValue) || t('(empty)');
+      const newVal = readable(r.newValue) || t('(empty)');
 
       div.innerHTML = `
         <div class="modal-revision-header">
@@ -1295,12 +1311,28 @@ function setActivityCollapsed(collapsed) {
   btn.setAttribute('aria-expanded', String(!collapsed));
   btn.dataset.i18n = collapsed ? 'Show' : 'Hide';
   btn.textContent = t(btn.dataset.i18n);
+  btn.dataset.i18nAriaLabel = collapsed ? 'Show activity feed' : 'Hide activity feed';
+  btn.setAttribute('aria-label', t(btn.dataset.i18nAriaLabel));
   try { localStorage.setItem('agentboard.activityCollapsed', collapsed ? '1' : '0'); } catch { /* Private browsing */ }
 }
 document.getElementById('activity-toggle')?.addEventListener('click', () => {
   setActivityCollapsed(!document.getElementById('activity-feed').classList.contains('collapsed'));
 });
-try { if (localStorage.getItem('agentboard.activityCollapsed') === '1') setActivityCollapsed(true); } catch { /* Private browsing */ }
+// Collapsed unless the user opened it: the ticket and its drafts need the height.
+try { setActivityCollapsed(localStorage.getItem('agentboard.activityCollapsed') !== '0'); } catch { setActivityCollapsed(true); }
+
+// 13: appearance System / Light / Dark
+function applyTheme(value) {
+  if (value === 'light' || value === 'dark') document.documentElement.dataset.theme = value;
+  else delete document.documentElement.dataset.theme;
+  try { localStorage.setItem('agentboard.theme', value); } catch { /* Private browsing */ }
+}
+(() => {
+  const select = document.getElementById('ui-theme');
+  if (!select) return;
+  select.value = document.documentElement.dataset.theme || 'system';
+  select.addEventListener('change', () => applyTheme(select.value));
+})();
 
 function switchTab(tabName) {
   document.querySelectorAll('.modal-tab').forEach(t => {
@@ -1970,11 +2002,17 @@ async function init() {
       list.style.display = 'block';
       btn.dataset.i18n = 'Hide';
       btn.textContent = t('Hide');
+      btn.dataset.i18nAriaLabel = 'Hide audit log';
+      btn.setAttribute('aria-label', t('Hide audit log'));
+      btn.setAttribute('aria-expanded', 'true');
       loadAudit();
     } else {
       list.classList.add('hidden');
       btn.dataset.i18n = 'Show';
       btn.textContent = t('Show');
+      btn.dataset.i18nAriaLabel = 'Show audit log';
+      btn.setAttribute('aria-label', t('Show audit log'));
+      btn.setAttribute('aria-expanded', 'false');
     }
   });
 }

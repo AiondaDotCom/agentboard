@@ -36,6 +36,13 @@
     "Dark": "Dunkel",
     "Preview height": "Vorschauhöhe",
     "Refresh": "Aktualisieren",
+    "Reload drafts": "Entwürfe neu laden",
+    "Show activity feed": "Aktivitäten anzeigen",
+    "Hide activity feed": "Aktivitäten ausblenden",
+    "Show audit log": "Audit-Protokoll anzeigen",
+    "Hide audit log": "Audit-Protokoll ausblenden",
+    "System": "System",
+    "Open ticket": "Ticket öffnen",
     "Visual review pending": "Visuelle Prüfung ausstehend",
     "Visually checked by AI": "Von KI visuell geprüft",
     "Changes needed": "Nachbesserung erforderlich",
@@ -222,6 +229,10 @@
     "dependsOn": "Abhängigkeiten"
   }
 };
+  try {
+    const theme = localStorage.getItem('agentboard.theme');
+    if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+  } catch { /* Private browsing */ }
   let saved;
   try { saved = localStorage.getItem('agentboard.language'); } catch { /* Private browsing */ }
   let language = ['en', 'de'].includes(saved) ? saved : (navigator.language.startsWith('de') ? 'de' : 'en');
