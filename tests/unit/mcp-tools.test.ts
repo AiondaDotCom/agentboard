@@ -47,12 +47,12 @@ describe('MCP tools', () => {
     db.close();
   });
 
-  it('registers all 24 tools', () => {
+  it('registers all 27 tools', () => {
     expect([...tools.keys()].sort()).toEqual([
       'add_comment', 'add_draft_screenshot', 'assign_ticket', 'batch', 'create_project', 'create_ticket',
-      'delete_project', 'delete_ticket', 'get_comments', 'get_html_draft', 'get_project',
-      'get_ticket', 'get_ticket_history', 'list_agents', 'list_html_drafts', 'list_projects',
-      'list_tickets', 'move_ticket', 'move_ticket_to_project', 'review_html_draft', 'save_html_draft', 'update_project',
+      'delete_project', 'delete_ticket', 'get_comments', 'get_html_draft', 'get_process_diagram', 'get_project',
+      'get_ticket', 'get_ticket_history', 'list_agents', 'list_html_drafts', 'list_process_diagrams', 'list_projects',
+      'list_tickets', 'move_ticket', 'move_ticket_to_project', 'review_html_draft', 'save_html_draft', 'save_process_diagram', 'update_project',
       'update_ticket', 'whoami',
     ]);
   });

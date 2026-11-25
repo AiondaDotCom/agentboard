@@ -4,6 +4,7 @@
 
 import fs from 'node:fs';
 import type { DraftVersion, DraftScreenshot, DraftReview } from '../services/html-drafts.js';
+import type { ProcessDiagramVersion } from '../services/process-diagrams.js';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 import type { Database as DatabaseType } from 'better-sqlite3';
@@ -149,6 +150,20 @@ export class AgentboardDB {
   }
   approveHtmlDraft(id: string, version: number): void {
     this.db.prepare("UPDATE html_draft_versions SET data = json_set(data, '$.approvedAt', ?) WHERE draft_id = ? AND version = ?").run(new Date().toISOString(), id, version);
+  }
+  saveProcessDiagram(diagram: ProcessDiagramVersion): void {
+    this.db.prepare('INSERT INTO process_diagram_versions (diagram_id, version, ticket_id, data) VALUES (?, ?, ?, ?)').run(diagram.id, diagram.version, diagram.ticketId, JSON.stringify(diagram));
+  }
+  getProcessDiagram(id: string, version: number): ProcessDiagramVersion | undefined {
+    const row = this.db.prepare('SELECT data FROM process_diagram_versions WHERE diagram_id = ? AND version = ?').get(id, version) as { data: string } | undefined;
+    return row ? JSON.parse(row.data) as ProcessDiagramVersion : undefined;
+  }
+  latestProcessDiagram(id: string): ProcessDiagramVersion | undefined {
+    const row = this.db.prepare('SELECT data FROM process_diagram_versions WHERE diagram_id = ? ORDER BY version DESC LIMIT 1').get(id) as { data: string } | undefined;
+    return row ? JSON.parse(row.data) as ProcessDiagramVersion : undefined;
+  }
+  listProcessDiagrams(ticketId: string): ProcessDiagramVersion[] {
+    return (this.db.prepare('SELECT data FROM process_diagram_versions WHERE ticket_id = ? ORDER BY rowid DESC').all(ticketId) as { data: string }[]).map(r => JSON.parse(r.data) as ProcessDiagramVersion);
   }
   saveDraftScreenshot(id: string, version: number, shot: DraftScreenshot, png: Buffer): void {
     this.db.prepare('INSERT INTO html_draft_screenshots (id, draft_id, version, data, png) VALUES (?, ?, ?, ?, ?)').run(shot.id, id, version, JSON.stringify(shot), png);

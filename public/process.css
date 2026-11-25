@@ -1,0 +1,43 @@
+/* Simplified BPMN diagrams at a ticket (#be30299e). Colours follow theme.css in light and dark. */
+.pd-root { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.pd-card { min-width: 0; border: 1px solid var(--border-light); border-radius: var(--radius-sm); padding: 12px; background: var(--subtle-bg); }
+.pd-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.pd-title { font-size: 14px; font-weight: 600; margin: 0; flex: 1 1 auto; min-width: 0; }
+.pd-id { font-size: 12px; padding: 2px 6px; border-radius: 4px; background: rgba(127, 127, 127, 0.16); user-select: all; white-space: nowrap; }
+.pd-version { font-size: 13px; }
+.pd-stage { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 6px; background: var(--inset-bg); }
+.pd-svg { display: block; font-family: inherit; }
+.pd-lane { fill: none; stroke: var(--border-light); }
+.pd-lane-head { fill: var(--glass); stroke: var(--border-light); }
+.pd-lane-name { fill: var(--text-dim); font-size: 12px; font-weight: 600; }
+.pd-shape { fill: var(--surface-solid); stroke: var(--accent); stroke-width: 1.5; }
+.pd-start .pd-shape { stroke: var(--green); stroke-width: 2; }
+.pd-end .pd-shape { stroke: var(--red); stroke-width: 4; }
+.pd-decision .pd-shape { stroke: var(--orange); }
+.pd-gate-x { stroke: var(--orange); stroke-width: 2.5; stroke-linecap: round; }
+.pd-label { fill: var(--text); font-size: 12.5px; }
+.pd-outside { fill: var(--text); font-size: 11.5px; }
+.pd-ref-bg { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 0.8; }
+.pd-ref { fill: var(--accent); font-size: 10px; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.pd-line { fill: none; stroke: var(--text-dim); stroke-width: 1.4; }
+.pd-hit { fill: none; stroke: transparent; stroke-width: 12; }
+.pd-arrowhead { fill: var(--text-dim); }
+.pd-flow-label { fill: var(--text-dim); font-size: 11px; paint-order: stroke; stroke: var(--surface-solid); stroke-width: 4px; stroke-linejoin: round; }
+.pd-node, .pd-flow { cursor: pointer; outline: none; }
+.pd-node:hover .pd-shape, .pd-node.pd-hover .pd-shape, .pd-node:focus-visible .pd-shape { stroke-width: 3; }
+.pd-flow:hover .pd-line, .pd-flow.pd-hover .pd-line, .pd-flow:focus-visible .pd-line { stroke: var(--accent); stroke-width: 2.4; }
+.pd-node.pd-selected .pd-shape { stroke: var(--magenta); stroke-width: 3.5; }
+.pd-flow.pd-selected .pd-line { stroke: var(--magenta); stroke-width: 2.6; }
+.pd-flow.pd-selected .pd-flow-label { fill: var(--magenta); }
+.pd-detail { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; min-height: 30px; font-size: 13px; }
+.pd-detail-text { flex: 1 1 200px; }
+.pd-steps { margin-top: 8px; font-size: 13px; }
+.pd-steps > summary { cursor: pointer; color: var(--text-dim); }
+.pd-list { display: grid; gap: 4px; margin-top: 6px; }
+.pd-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; padding: 3px 4px; border-radius: 4px; }
+.pd-row:hover { background: var(--glass); }
+.pd-copy { white-space: nowrap; }
+/* "Show large": the diagram takes the whole window, the step list stays below it */
+.pd-dialog { width: calc(100vw - 24px); max-width: none; height: calc(100dvh - 24px); max-height: none; margin: 12px; padding: 0; border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--surface-solid); color: var(--text); }
+.pd-dialog::backdrop { background: var(--overlay-bg); }
+.pd-dialog .pd-card { border: 0; min-height: 100%; box-sizing: border-box; }

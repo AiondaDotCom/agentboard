@@ -8,6 +8,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { HtmlDraftService, type ScreenshotInput } from './html-drafts.js';
+import { ProcessDiagramService } from './process-diagrams.js';
 import type { AgentboardDB } from '../db/database.js';
 import { pubsub, EVENTS } from '../graphql/pubsub.js';
 import { BATCH_OPS, COLUMN_ID_RE, DEFAULT_COLUMNS, DEFAULT_PRIORITY, MAX_BATCH_OPS, PRIORITIES, WORK_TYPES, WORK_TYPE_FILTERS } from '../types.js';
@@ -49,9 +50,14 @@ function optionalCount(value: number | undefined, field: string): number {
 
 export class BoardService {
   readonly htmlDrafts: HtmlDraftService;
+  readonly processDiagrams: ProcessDiagramService;
   constructor(private db: AgentboardDB) {
     this.htmlDrafts = new HtmlDraftService(db, (projectId, ticketId, actorId, detail) => {
       this.audit(actorId, 'HTML_DRAFT', `/projects/${projectId}/tickets/${ticketId}`, detail);
+      this.boardEvent('ticket_updated', actorId, this.requireTicket(projectId, ticketId), undefined, detail);
+    });
+    this.processDiagrams = new ProcessDiagramService(db, (projectId, ticketId, actorId, detail) => {
+      this.audit(actorId, 'PROCESS_DIAGRAM', `/projects/${projectId}/tickets/${ticketId}`, detail);
       this.boardEvent('ticket_updated', actorId, this.requireTicket(projectId, ticketId), undefined, detail);
     });
   }
@@ -1012,6 +1018,13 @@ export class BoardService {
       case 'review_html_draft':
         if (actorId === null || actorId === '') throw new ValidationError('Agent identity required');
         return this.htmlDrafts.review(str('project_id'), str('ticket_id'), str('draft_id'), args['version'] as number, str('status'), str('findings'), args['screenshot_ids'] as string[], args['visually_inspected'] as boolean, actorId);
+      case 'save_process_diagram':
+        if (actorId === null || actorId === '') throw new ValidationError('Agent identity required');
+        return this.processDiagrams.save(str('project_id'), str('ticket_id'), args['title'], args, actorId, optStr('diagram_id'), args['expected_version'] as number | undefined);
+      case 'list_process_diagrams':
+        return this.processDiagrams.list(str('project_id'), str('ticket_id'));
+      case 'get_process_diagram':
+        return this.processDiagrams.get(str('project_id'), str('ticket_id'), str('diagram_id'), args['version'] as number);
     }
   }
 

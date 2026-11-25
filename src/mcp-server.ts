@@ -8,6 +8,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { VISUAL_REVIEW_INSTRUCTIONS } from './services/html-drafts.js';
+import { PROCESS_DIAGRAM_INSTRUCTIONS, NODE_TYPES, LIMITS } from './services/process-diagrams.js';
 import type { BoardService } from './services/board.service.js';
 import { BATCH_OPS, MAX_BATCH_OPS } from './types.js';
 import type { Ticket } from './types.js';
@@ -24,7 +25,7 @@ export const MCP_INSTRUCTIONS =
   '(e.g. creating several tickets, updating/moving multiple tickets, or any mix of operations), ' +
   'ALWAYS use the `batch` tool instead of individual calls. One batch call executes many ' +
   'operations in a single round-trip – dramatically faster and cheaper than sequential tool calls. ' +
-  'Use individual tools only for single, stand-alone operations. ' + VISUAL_REVIEW_INSTRUCTIONS;
+  'Use individual tools only for single, stand-alone operations. ' + VISUAL_REVIEW_INSTRUCTIONS + ' ' + PROCESS_DIAGRAM_INSTRUCTIONS;
 
 // ---------------------------------------------------------------------------
 // Tool registration (shared between embedded + standalone)
@@ -80,6 +81,19 @@ export function registerMcpTools(
   mcp.registerTool('review_html_draft', { description: 'Record findings only AFTER actually viewing the attached screenshots. Passing requires mobile and desktop in both light and dark mode. No browser access: leave pending. This is AI visual review, NEVER human approval. ' + VISUAL_REVIEW_INSTRUCTIONS, inputSchema:
     { ...draftVersion, status: z.enum(['passed','needs_changes']), findings: z.string(), screenshot_ids: z.array(z.string()).min(1), visually_inspected: z.literal(true) } },
     a => wrap(() => service.htmlDrafts.review(a.project_id, a.ticket_id, a.draft_id, a.version, a.status, a.findings, a.screenshot_ids, a.visually_inspected, agentId)));
+
+  // Simplified BPMN of the business process a ticket describes; the board lays it out and draws it.
+  const lane = z.object({ id: z.string().describe('Short id, letters/digits/_/-'), name: z.string().describe('Actor, e.g. "User", "App", "Server"') });
+  const node = z.object({ id: z.string(), type: z.enum(NODE_TYPES).describe('start/end event, task, or decision (exclusive gateway)'), label: z.string().max(LIMITS.label), lane: z.string().describe('Lane id') });
+  const flow = z.object({ from: z.string(), to: z.string(), label: z.string().optional().describe('Required in practice for flows leaving a decision, e.g. "yes"/"no"') });
+  mcp.registerTool('save_process_diagram', { description: 'Attach a simplified BPMN diagram of the business process this ticket describes, or save a new immutable version (diagram_id + expected_version). The board validates (one start, one end, every node reachable, decisions with ≥2 labelled exits) and draws it with swimlanes. Returns the diagram id and version the user can refer to. ' + PROCESS_DIAGRAM_INSTRUCTIONS, inputSchema:
+    { ...draftTarget, title: z.string(), lanes: z.array(lane).min(1).max(LIMITS.lanes), nodes: z.array(node).min(2).max(LIMITS.nodes), flows: z.array(flow).min(1).max(LIMITS.flows), diagram_id: z.string().optional(), expected_version: z.number().int().positive().optional() } },
+    a => wrap(() => service.processDiagrams.save(a.project_id, a.ticket_id, a.title, a, agentId, a.diagram_id, a.expected_version)));
+  mcp.registerTool('list_process_diagrams', { description: 'List all process diagram versions at a ticket (newest first), including lanes, nodes and flows.', inputSchema:
+    draftTarget }, a => wrap(() => service.processDiagrams.list(a.project_id, a.ticket_id)));
+  mcp.registerTool('get_process_diagram', { description: 'Read one exact process diagram version.', inputSchema:
+    { ...draftTarget, diagram_id: z.string(), version: z.number().int().positive() } },
+    a => wrap(() => service.processDiagrams.get(a.project_id, a.ticket_id, a.diagram_id, a.version)));
 
   // --- Projects ---
   mcp.tool('list_projects', 'List all projects on the board', {},

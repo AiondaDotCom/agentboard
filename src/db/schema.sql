@@ -133,6 +133,15 @@ CREATE TABLE IF NOT EXISTS html_draft_versions (
   PRIMARY KEY (draft_id, version)
 );
 CREATE INDEX IF NOT EXISTS idx_html_drafts_ticket ON html_draft_versions(ticket_id);
+-- Immutable simplified-BPMN versions of the business process a ticket describes.
+CREATE TABLE IF NOT EXISTS process_diagram_versions (
+  diagram_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  ticket_id TEXT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+  data TEXT NOT NULL,
+  PRIMARY KEY (diagram_id, version)
+);
+CREATE INDEX IF NOT EXISTS idx_process_diagrams_ticket ON process_diagram_versions(ticket_id);
 CREATE TABLE IF NOT EXISTS html_draft_screenshots (
   id TEXT PRIMARY KEY,
   draft_id TEXT NOT NULL,

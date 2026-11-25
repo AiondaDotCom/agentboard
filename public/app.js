@@ -1249,8 +1249,12 @@ async function openModal(projectId, ticketId, { fromRoute = false, refresh = fal
     const draftsSection = document.getElementById('modal-drafts-section');
     draftsSection.hidden = true;
     draftsSection.open = true;
+    const processSection = document.getElementById('modal-process-section');
+    processSection.hidden = true;
+    processSection.open = true;
   }
   void htmlDrafts.render(document.getElementById('ticket-drafts'), { projectId, id: ticketId });
+  void processDiagrams.render(document.getElementById('ticket-process'), { projectId, id: ticketId });
 
   // Reset to comments tab
   if (!refresh) switchTab('comments');
@@ -1300,6 +1304,14 @@ document.getElementById('ticket-drafts')?.addEventListener('drafts-count', (even
   if (!section) return;
   section.hidden = event.detail === 0;
   document.getElementById('modal-drafts-count').textContent = event.detail > 0 ? `(${event.detail})` : '';
+});
+
+// Process diagrams (simplified BPMN) likewise only appear when the ticket has some.
+document.getElementById('ticket-process')?.addEventListener('process-count', (event) => {
+  const section = document.getElementById('modal-process-section');
+  if (!section) return;
+  section.hidden = event.detail === 0;
+  document.getElementById('modal-process-count').textContent = event.detail > 0 ? `(${event.detail})` : '';
 });
 
 // Activity feed can be folded away; the choice survives reloads.
@@ -1750,6 +1762,9 @@ function handleSubscriptionEvent(subId, data) {
       boardNotifications.receive(data.boardEventAdded);
       if (data.boardEventAdded.ticketId === modalTarget?.id && data.boardEventAdded.detail?.includes('HTML draft')) {
         void htmlDrafts.render(document.getElementById('ticket-drafts'), modalTarget);
+      }
+      if (data.boardEventAdded.ticketId === modalTarget?.id && data.boardEventAdded.detail?.includes('Process diagram')) {
+        void processDiagrams.render(document.getElementById('ticket-process'), modalTarget);
       }
     }
     return;

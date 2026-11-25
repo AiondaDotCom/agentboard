@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/style.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="stylesheet" href="/drafts.css">
+  <link rel="stylesheet" href="/process.css">
 </head>
 <body>
   <header>
@@ -65,6 +66,10 @@
         <div class="modal-main">
           <h2 id="modal-title" class="modal-title"></h2>
           <div id="modal-blocked" class="modal-blocked" style="display:none"></div>
+          <details id="modal-process-section" class="modal-drafts-section" open hidden>
+            <summary class="modal-section-label"><span data-i18n="Process">Process</span> <span id="modal-process-count"></span></summary>
+            <div id="ticket-process" class="pd-root"></div>
+          </details>
           <details id="modal-drafts-section" class="modal-drafts-section" open hidden>
             <summary class="modal-section-label"><span data-i18n="UX drafts">UX drafts</span> <span id="modal-drafts-count"></span></summary>
             <div id="ticket-drafts" class="drafts-root"></div>
@@ -225,6 +230,7 @@
   </div>
 
   <script src="/drafts.js"></script>
+  <script src="/process.js"></script>
   <script src="/app.js"></script>
   <script src="/notifications.js"></script>
 </body>

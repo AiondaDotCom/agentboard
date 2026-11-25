@@ -25,6 +25,7 @@ import { createTicketRoutes, createHumanTicketRoutes } from './api/routes/ticket
 import { createAuditRoutes } from './api/routes/audit.js';
 import { createBatchRoutes } from './api/routes/batch.js';
 import { createHtmlDraftRoutes } from './api/routes/html-drafts.js';
+import { createProcessDiagramRoutes } from './api/routes/process-diagrams.js';
 import { createRuntimeRoutes } from './api/routes/runtime.js';
 import { createAuditMiddleware } from './api/middleware/audit.js';
 
@@ -111,6 +112,7 @@ app.use('/api', createAuditMiddleware(db));
 app.use('/api/agents', createAgentRoutes(service));
 app.use('/api/projects', createProjectRoutes(service));
 app.use('/api/projects/:id', createHtmlDraftRoutes(service, cookie => { const token = parseCookies(cookie)['agentboard_session']; return token !== undefined && token !== '' && db.hasSession(token); }));
+app.use('/api/projects/:id', createProcessDiagramRoutes(service, cookie => { const token = parseCookies(cookie)['agentboard_session']; return token !== undefined && token !== '' && db.hasSession(token); }));
 app.use('/api/projects/:id', createTicketRoutes(service));
 app.use('/api/projects/:id', createHumanTicketRoutes(service));
 app.use('/api/audit', createAuditRoutes(service));

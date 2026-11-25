@@ -128,6 +128,9 @@ export const BATCH_OPS = [
   'get_html_draft',
   'add_draft_screenshot',
   'review_html_draft',
+  'save_process_diagram',
+  'list_process_diagrams',
+  'get_process_diagram',
 ] as const;
 
 export type BatchOp = (typeof BATCH_OPS)[number];
