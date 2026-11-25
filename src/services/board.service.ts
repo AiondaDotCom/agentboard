@@ -1023,6 +1023,8 @@ export class BoardService {
         return this.processDiagrams.save(str('project_id'), str('ticket_id'), args['title'], args, actorId, optStr('diagram_id'), args['expected_version'] as number | undefined);
       case 'list_process_diagrams':
         return this.processDiagrams.list(str('project_id'), str('ticket_id'));
+      case 'delete_process_diagram':
+        return this.processDiagrams.remove(str('project_id'), str('ticket_id'), str('diagram_id'), actorId);
       case 'get_process_diagram':
         return this.processDiagrams.get(str('project_id'), str('ticket_id'), str('diagram_id'), args['version'] as number);
     }

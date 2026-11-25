@@ -177,6 +177,15 @@ export class ProcessDiagramService {
     if (diagram?.ticketId !== ticketId) throw new NotFoundError('Diagram version not found');
     return diagram;
   }
+  /** Removes a diagram with all its versions (agents via MCP, humans via the board). */
+  remove(projectId: string, ticketId: string, id: string, actorId: string | null): { deleted: true; id: string; versions: number } {
+    this.ticket(projectId, ticketId);
+    const latest = this.db.latestProcessDiagram(id);
+    if (latest?.ticketId !== ticketId) throw new NotFoundError('Diagram not found');
+    const versions = this.db.deleteProcessDiagram(id);
+    this.changed(projectId, ticketId, actorId, `Process diagram removed: ${latest.title}`);
+    return { deleted: true, id, versions };
+  }
   save(
     projectId: string,
     ticketId: string,

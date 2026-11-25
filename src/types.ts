@@ -131,6 +131,7 @@ export const BATCH_OPS = [
   'save_process_diagram',
   'list_process_diagrams',
   'get_process_diagram',
+  'delete_process_diagram',
 ] as const;
 
 export type BatchOp = (typeof BATCH_OPS)[number];

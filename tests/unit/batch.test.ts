@@ -78,7 +78,7 @@ describe('Batch operations', () => {
 
   describe('BoardService.executeBatch – operations', () => {
     it('supports every advertised op', () => {
-      expect(BATCH_OPS).toHaveLength(25); // process diagram ops: tests/unit/process-diagrams.test.ts
+      expect(BATCH_OPS).toHaveLength(26); // process diagram ops: tests/unit/process-diagrams.test.ts
 
       const setup = service.executeBatch([
         { op: 'create_project', args: { name: 'p2', description: 'd', columns: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }] } },

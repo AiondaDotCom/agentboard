@@ -91,6 +91,9 @@ export function registerMcpTools(
     a => wrap(() => service.processDiagrams.save(a.project_id, a.ticket_id, a.title, a, agentId, a.diagram_id, a.expected_version)));
   mcp.registerTool('list_process_diagrams', { description: 'List all process diagram versions at a ticket (newest first), including lanes, nodes and flows.', inputSchema:
     draftTarget }, a => wrap(() => service.processDiagrams.list(a.project_id, a.ticket_id)));
+  mcp.registerTool('delete_process_diagram', { description: 'Remove a process diagram and all its versions from a ticket, e.g. when it does not describe the ticket\'s business process.', inputSchema:
+    { ...draftTarget, diagram_id: z.string() } },
+    a => wrap(() => service.processDiagrams.remove(a.project_id, a.ticket_id, a.diagram_id, agentId)));
   mcp.registerTool('get_process_diagram', { description: 'Read one exact process diagram version.', inputSchema:
     { ...draftTarget, diagram_id: z.string(), version: z.number().int().positive() } },
     a => wrap(() => service.processDiagrams.get(a.project_id, a.ticket_id, a.diagram_id, a.version)));

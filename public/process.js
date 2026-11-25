@@ -232,7 +232,7 @@
     return b;
   }
 
-  function diagramCard(versions) {
+  function diagramCard(versions, target) {
     const card = el('section', undefined, 'pd-card');
     let current = versions[0];
     const header = el('div', undefined, 'pd-header');
@@ -280,6 +280,22 @@
       expand.textContent = tr('Show small');
     };
     header.append(expand);
+    const remove = el('button', tr('Remove'), 'draft-action');
+    remove.type = 'button';
+    remove.onclick = async () => {
+      if (!confirm(`${tr('Remove this process diagram with all versions?')}\n„${current.title}“`)) return;
+      remove.disabled = true;
+      try {
+        const response = await fetch(`${endpoint(target)}/${encodeURIComponent(current.id)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        if (!response.ok) throw new Error(`${tr('Remove failed')} (${response.status})`);
+        if (dialog.open) dialog.close();
+        await render(card.closest('.pd-root') ?? card.parentElement, target);
+      } catch (e) {
+        remove.disabled = false;
+        alert(e.message);
+      }
+    };
+    header.append(remove);
     const stage = el('div', undefined, 'pd-stage');
     const detail = el('div', undefined, 'pd-detail');
     const steps = el('details', undefined, 'pd-steps');
@@ -343,7 +359,7 @@
       // Oldest diagram first, so the order stays put when a new one is added
       const first = (versions) => versions.reduce((min, v) => (v.createdAt < min ? v.createdAt : min), versions[0].createdAt);
       for (const versions of [...groups.values()].sort((a, b) => first(a).localeCompare(first(b))))
-        root.append(diagramCard(versions.sort((a, b) => b.version - a.version)));
+        root.append(diagramCard(versions.sort((a, b) => b.version - a.version), target));
     } catch (e) {
       if (root._pdRequest !== request) return;
       root.dispatchEvent(new CustomEvent('process-count', { detail: -1 }));

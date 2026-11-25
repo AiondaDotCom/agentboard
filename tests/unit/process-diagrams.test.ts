@@ -117,6 +117,13 @@ describe('process diagrams (simplified BPMN)', () => {
     await request(app).post(base).set('X-Api-Key', apiKey).send({ title: 'Broken', lanes: [] }).expect(400);
     const other = service.createTicket(projectId, 'Elsewhere').id;
     await request(app).get(`/api/projects/${projectId}/tickets/${other}/process-diagrams/${saved.body.id}/versions/1`).set('X-Api-Key', apiKey).expect(404);
+    // Removal: not via another ticket, not anonymously, not cross-site; humans with session may
+    await request(app).delete(`/api/projects/${projectId}/tickets/${other}/process-diagrams/${saved.body.id}`).set('X-Api-Key', apiKey).expect(404);
+    await request(app).delete(`${base}/${saved.body.id}`).expect(401);
+    await request(app).delete(`${base}/${saved.body.id}`).set('Cookie', 'session=test').set('Sec-Fetch-Site', 'cross-site').send({}).expect(403);
+    const gone = await request(app).delete(`${base}/${saved.body.id}`).set('Cookie', 'session=test').send({}).expect(200);
+    expect(gone.body).toEqual({ deleted: true, id: saved.body.id, versions: 1 });
+    await request(app).get(base).set('Cookie', 'session=test').expect(200, []);
   });
 
   it('offers create and read as MCP tools and in batch', async () => {
@@ -139,5 +146,9 @@ describe('process diagrams (simplified BPMN)', () => {
     expect(batch.map((r) => r.ok)).toEqual([true, true]);
     expect((batch[1].result as unknown[]).length).toBe(2);
     expect(MCP_INSTRUCTIONS).toContain('save_process_diagram');
+    const removed = JSON.parse((await tools.get('delete_process_diagram')!({ project_id: projectId, ticket_id: ticketId, diagram_id: saved.id })).content[0].text);
+    expect(removed).toEqual({ deleted: true, id: saved.id, versions: 1 });
+    expect(service.processDiagrams.list(projectId, ticketId).map((d) => d.id)).not.toContain(saved.id);
+    expect((await tools.get('delete_process_diagram')!({ project_id: projectId, ticket_id: ticketId, diagram_id: saved.id })).isError).toBe(true);
   });
 });

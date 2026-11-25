@@ -73,6 +73,12 @@ test('process diagram with copyable sub-IDs and large view', async ({ page, requ
   await expect(page.locator('dialog.pd-dialog')).toHaveCount(0);
   await expect(page.locator('#ticket-process .pd-card')).toHaveCount(1);
   await expect(page.locator('#ticket-modal')).toBeVisible();
+
+  // Humans can remove a diagram that does not fit the ticket
+  page.once('dialog', (d) => void d.accept());
+  await page.locator('#ticket-process .pd-card').getByRole('button', { name: 'Entfernen' }).click();
+  await expect(page.locator('#modal-process-section')).toBeHidden();
+  expect(await (await request.get(`/api/projects/${project.id}/tickets/${ticket.id}/process-diagrams`, { headers })).json()).toEqual([]);
 });
 
 // A line through a shape it does not belong to reads as a different process

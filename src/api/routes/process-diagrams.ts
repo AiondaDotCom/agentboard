@@ -37,6 +37,25 @@ export function createProcessDiagramRoutes(
       handleServiceError(res, e);
     }
   });
+  // Removal: agents with their key, humans with their session (same-site JSON request only)
+  router.delete(path + '/:diagramId', (req, res, next) => {
+    if (!sessionValid(req.headers.cookie)) {
+      agentAuth(req, res, next);
+      return;
+    }
+    if (req.headers['sec-fetch-site'] === 'cross-site' || req.is('application/json') !== 'application/json') {
+      res.status(403).json({ error: 'Cross-site action refused' });
+      return;
+    }
+    next();
+  }, (req, res) => {
+    try {
+      const agentId = (req as AuthenticatedRequest).agentId;
+      res.json(service.processDiagrams.remove(routeParam(req, 'id'), routeParam(req, 'ticketId'), routeParam(req, 'diagramId'), agentId !== undefined && agentId !== '' ? agentId : null));
+    } catch (e) {
+      handleServiceError(res, e);
+    }
+  });
   router.post(path, agentAuth, (req, res) => {
     try {
       const agentId = (req as AuthenticatedRequest).agentId;

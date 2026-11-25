@@ -162,6 +162,9 @@ export class AgentboardDB {
     const row = this.db.prepare('SELECT data FROM process_diagram_versions WHERE diagram_id = ? ORDER BY version DESC LIMIT 1').get(id) as { data: string } | undefined;
     return row ? JSON.parse(row.data) as ProcessDiagramVersion : undefined;
   }
+  deleteProcessDiagram(id: string): number {
+    return this.db.prepare('DELETE FROM process_diagram_versions WHERE diagram_id = ?').run(id).changes;
+  }
   listProcessDiagrams(ticketId: string): ProcessDiagramVersion[] {
     return (this.db.prepare('SELECT data FROM process_diagram_versions WHERE ticket_id = ? ORDER BY rowid DESC').all(ticketId) as { data: string }[]).map(r => JSON.parse(r.data) as ProcessDiagramVersion);
   }
