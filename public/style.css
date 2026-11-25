@@ -2399,7 +2399,13 @@ body:has(.ticket-panel:not(.hidden)) { height: 100dvh; }
 body.ticket-full:has(.ticket-panel:not(.hidden)) #board { display: none !important; }
 body.ticket-full #ticket-modal { flex: 1 1 auto; }
 body.ticket-full #ticket-modal .modal-ticket { border-width: 0; }
-body.ticket-full #ticket-modal .modal-body { padding-inline: max(32px, calc((100% - 1440px) / 2)); }
+body.ticket-full #ticket-modal .modal-body { padding-inline: 32px; }
+/* Full page: the process diagrams span the whole width, details start below them */
+body.ticket-full #ticket-modal .modal-main { display: contents; }
+body.ticket-full #ticket-modal .modal-main > * { grid-column: 1; min-width: 0; }
+body.ticket-full #ticket-modal #modal-process-section:not([hidden]) { grid-column: 1 / -1; grid-row: 2; }
+body.ticket-full #ticket-modal .modal-side { grid-column: 2; grid-row: 1 / span 40; }
+body.ticket-full #ticket-modal:has(#modal-process-section:not([hidden])) .modal-side { grid-row: 3 / span 40; }
 
 @media (max-width: 760px), (max-width: 1000px) and (pointer: coarse) {
   .modal-fullpage { display: none; }

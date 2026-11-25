@@ -7,6 +7,8 @@
 .pd-version { font-size: 13px; }
 .pd-stage { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 6px; background: var(--inset-bg); }
 .pd-svg { display: block; font-family: inherit; }
+/* Full page and "Show large": fit the whole diagram to the available width */
+body.ticket-full .pd-svg, .pd-dialog .pd-svg { max-width: 100%; height: auto; }
 .pd-lane { fill: none; stroke: var(--border-light); }
 .pd-lane-head { fill: var(--glass); stroke: var(--border-light); }
 .pd-lane-name { fill: var(--text-dim); font-size: 12px; font-weight: 600; }
