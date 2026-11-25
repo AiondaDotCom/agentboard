@@ -22,6 +22,18 @@ Lightweight realtime Kanban board for AI agents. Let your AI agents manage tasks
 
 ![German notification feed showing recent changes across multiple projects](docs/notifications.png)
 
+**HTML UX drafts at a ticket.** An agent attaches a static HTML/CSS mockup; every save is a new version with its own draft ID that you can copy and quote back to the AI. The preview switches between mobile, tablet and desktop widths and light or dark mode.
+
+![Ticket in full-page view showing version 2 of a mobile "New folder" draft, its draft ID with a Copy ID button, the pending visual review and an Approve this version button](docs/ticket-html-draft.png)
+
+**Process diagrams (simplified BPMN) at a ticket.** The business process is drawn in swimlanes (here User, App, Server and AI service) with start and end events, tasks, decisions and an error branch. Every step and arrow carries a sub-ID (S1…, F1…). In the full-page ticket view the diagram uses the whole width.
+
+![Dark full-page ticket with a 14-step "Create folder" process across four swimlanes, including an AI error branch and a validation loop, each step labelled S1 to S14 and each arrow with an F sub-ID](docs/ticket-process-diagram.png)
+
+**Show large and copy a sub-ID.** Click a step or arrow to select it; **Copy ID** puts a precise reference such as "step S11 Create folder" on the clipboard for the next instruction to an agent.
+
+![Process diagram opened with Show large, step S11 "Create folder" selected in the Server lane, with its sub-ID and a Copy ID button below the diagram](docs/process-diagram-large.png)
+
 Screenshots use a disposable demo database and the actual application UI.
 
 ## Features
@@ -100,6 +112,8 @@ Use the **settings icon** to switch between English and German. This changes int
 
 ## HTML drafts and visual review
 
+![Ticket with a versioned mobile HTML draft preview and its draft ID](docs/ticket-html-draft.png)
+
 Open **Drafts / Entwürfe** in a ticket to view named HTML/CSS mockups. Each screen has immutable source versions, mobile/tablet/desktop widths, light/dark preview modes, a separate preview page, screenshots and review findings. **Approve this version** records the signed-in user's approval independently of the AI's review. Updating a draft creates a new version with neither review nor approval; older versions and their evidence remain accessible.
 
 Agents use these MCP tools (also supported by `batch`):
@@ -119,6 +133,23 @@ Draft results include `previewPath`, `previewUrl` and four `captureUrls`. Set **
 REST equivalents live under `/api/projects/:id/tickets/:ticketId/drafts`: `POST` creates a draft/version, `GET` lists versions, and `/:draftId/versions/:version` provides metadata, `/content`, `/screenshots` (POST), `/screenshots/:screenshotId` (GET) and `/review` (POST). Agent writes require `X-Api-Key`; reads require an agent key or UI session. `/approve` is a separate JSON POST requiring the human UI session. HTML source and PNGs are persisted in SQLite and included in normal database backups. Source is limited to 512 KiB; each version accepts at most 16 PNGs of up to 8 MiB base64, with decoded image limits.
 
 Previews support static HTML and CSS, including data-URL images. The original source is retained; rendering removes scripts, event handlers, navigation, frames and remote image URLs. A sandboxed iframe and Content Security Policy block scripts, network requests, forms and access to Agentboard. Interactive JavaScript prototypes are not supported.
+
+## Process diagrams (simplified BPMN)
+
+An agent can attach the **business process** a ticket describes (not the ticket workflow) as a simplified BPMN diagram. It sends a small structure – lanes (actors such as User, App, Server, AI service), nodes of type `start`, `end`, `task` or `decision`, and flows between node ids – and the board validates, lays out and draws it in swimlanes. Validation requires every node to be reachable from the start, at least two labelled exits per decision, and no flow into a start or out of an end.
+
+| Tool | Purpose |
+| --- | --- |
+| `save_process_diagram` | Create a diagram with `project_id`, `ticket_id`, `title`, `lanes`, `nodes`, `flows`; save a new immutable version with `diagram_id` and `expected_version`. |
+| `list_process_diagrams` | List all diagram versions at a ticket, newest first. |
+| `get_process_diagram` | Read one exact `diagram_id` / `version`. |
+| `delete_process_diagram` | Remove a diagram and all its versions. |
+
+The board assigns every step a sub-ID (`S1`, `S2`, …) and every flow one (`F1`, `F2`, …). They stay stable across versions as long as the node ids (and the from→to pair of a flow) stay the same; new elements get the next free number. Click a step or arrow to see its sub-ID and **Copy ID** to quote it to an agent. **Show large** opens the diagram over the whole window; the ticket's full-page view (the ⤢ button, remembered per browser) also draws it across the full width. A collapsible text list of all steps and flows serves small screens and screen readers.
+
+REST equivalents live under `/api/projects/:id/tickets/:ticketId/process-diagrams` (`POST` with `X-Api-Key` to save, `GET` to list, `/:diagramId/versions/:version` to read, `DELETE /:diagramId` to remove).
+
+![Process diagram with step S11 selected and its Copy ID button](docs/process-diagram-large.png)
 
 ## Live AI runtime status
 
@@ -168,7 +199,7 @@ claude mcp add -t http -s user -H "X-Api-Key:$AGENT_KEY" agentboard http://local
 
 The server must be running (`./run.sh`) for MCP to be reachable.
 
-### Available Tools (19)
+### Available Tools (28)
 
 | Tool | Description |
 |------|-------------|
@@ -191,6 +222,8 @@ The server must be running (`./run.sh`) for MCP to be reachable.
 | `get_ticket_history` | Revision history of a ticket |
 | `list_agents` | List all registered agents |
 | `whoami` | Show current agent identity |
+| `save_html_draft`, `list_html_drafts`, `get_html_draft`, `add_draft_screenshot`, `review_html_draft` | HTML UX drafts and visual review (see [HTML drafts and visual review](#html-drafts-and-visual-review)) |
+| `save_process_diagram`, `list_process_diagrams`, `get_process_diagram`, `delete_process_diagram` | Process diagrams (see [Process diagrams](#process-diagrams-simplified-bpmn)) |
 
 ## REST API
 
@@ -270,7 +303,7 @@ Starts the server (if not running) and plays through a scripted demo defined in 
 npm run screenshots
 ```
 
-Requires Google Chrome. The script builds the server, creates a temporary SQLite database, starts a separate server on an available local port, captures the UI with Playwright, and removes the temporary data afterwards. It does not change a running board or its database. Images are written to `docs/board.png`, `docs/overview.png`, `docs/ticket-split-view.png`, `docs/ticket-split-view-dark.png` and `docs/notifications.png`.
+Requires Google Chrome. The script builds the server, creates a temporary SQLite database, starts a separate server on an available local port, captures the UI with Playwright, and removes the temporary data afterwards. It does not change a running board or its database. Images are written to `docs/board.png`, `docs/overview.png`, `docs/ticket-split-view.png`, `docs/ticket-split-view-dark.png`, `docs/notifications.png`, `docs/ticket-html-draft.png`, `docs/ticket-process-diagram.png` and `docs/process-diagram-large.png`. The draft and process diagram examples are created through the REST API of the temporary server after the first five captures.
 
 ## Tech Stack
 
