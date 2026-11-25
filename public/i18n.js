@@ -18,6 +18,12 @@
   },
   "de": {
     "Drafts": "Entwürfe",
+    "UX drafts": "UX-Entwürfe",
+    "Draft": "Entwurf",
+    "Draft ID": "Entwurfs-ID",
+    "Copy ID": "ID kopieren",
+    "Copied": "Kopiert",
+    "Copy failed": "Kopieren fehlgeschlagen",
     "HTML drafts": "HTML-Entwürfe",
     "Back to ticket": "Zurück zum Ticket",
     "Screen and version": "Ansicht und Version",

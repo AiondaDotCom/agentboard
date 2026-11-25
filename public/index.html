@@ -62,6 +62,10 @@
         <div class="modal-main">
           <h2 id="modal-title" class="modal-title"></h2>
           <div id="modal-blocked" class="modal-blocked" style="display:none"></div>
+          <details id="modal-drafts-section" class="modal-drafts-section" open hidden>
+            <summary class="modal-section-label"><span data-i18n="UX drafts">UX drafts</span> <span id="modal-drafts-count"></span></summary>
+            <div id="ticket-drafts" class="drafts-root"></div>
+          </details>
 
           <div class="modal-section">
             <div class="modal-section-label" data-i18n="Description">Description</div>
@@ -71,12 +75,10 @@
           <div id="modal-deps" class="modal-deps" style="display:none"></div>
 
           <div class="modal-tabs">
-            <button class="modal-tab" data-tab="drafts" onclick="switchTab('drafts')" data-i18n="Drafts">Drafts</button>
             <button class="modal-tab active" data-tab="comments" onclick="switchTab('comments')" data-i18n="Comments">Comments</button>
             <button class="modal-tab" data-tab="history" onclick="switchTab('history')" data-i18n="History">History</button>
           </div>
 
-          <div id="tab-drafts" class="modal-tab-content hidden"><div id="ticket-drafts" class="drafts-root"></div></div>
           <div id="tab-comments" class="modal-tab-content">
             <div id="modal-comments" class="modal-comments"></div>
           </div>
@@ -171,7 +173,10 @@
   <footer id="activity-feed" class="activity-feed hidden">
     <div class="activity-header">
       <span data-i18n="ACTIVITY FEED">ACTIVITY FEED</span>
-      <span id="activity-count">0 events</span>
+      <span class="activity-header-end">
+        <span id="activity-count">0 events</span>
+        <button id="activity-toggle" class="btn-small" type="button" aria-controls="activity-list" aria-expanded="true" data-i18n="Hide">Hide</button>
+      </span>
     </div>
     <div id="activity-list" class="activity-list"></div>
   </footer>

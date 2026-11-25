@@ -54,6 +54,20 @@
   opacity: 0.65;
   cursor: default;
 }
+.draft-id {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.draft-id code {
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(127, 127, 127, 0.16);
+  user-select: all;
+}
+
 .draft-state {
   display: flex;
   flex-wrap: wrap;
@@ -175,6 +189,7 @@
 .draft-capture h1,
 .draft-capture h3,
 .draft-capture .draft-controls,
+.draft-capture .draft-id,
 .draft-capture .draft-state,
 .draft-capture .draft-caption,
 .draft-capture .draft-findings,

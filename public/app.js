@@ -1229,6 +1229,11 @@ async function openModal(projectId, ticketId, { fromRoute = false, refresh = fal
     });
   }
 
+  if (!refresh) {
+    const draftsSection = document.getElementById('modal-drafts-section');
+    draftsSection.hidden = true;
+    draftsSection.open = true;
+  }
   void htmlDrafts.render(document.getElementById('ticket-drafts'), { projectId, id: ticketId });
 
   // Reset to comments tab
@@ -1272,6 +1277,30 @@ function closeModal(event) {
     navigate(projectPath(currentProjectId));
   }
 }
+
+// Drafts sit above the description; the section only appears when a ticket has drafts.
+document.getElementById('ticket-drafts')?.addEventListener('drafts-count', (event) => {
+  const section = document.getElementById('modal-drafts-section');
+  if (!section) return;
+  section.hidden = event.detail === 0;
+  document.getElementById('modal-drafts-count').textContent = event.detail > 0 ? `(${event.detail})` : '';
+});
+
+// Activity feed can be folded away; the choice survives reloads.
+function setActivityCollapsed(collapsed) {
+  const feed = document.getElementById('activity-feed');
+  const btn = document.getElementById('activity-toggle');
+  if (!feed || !btn) return;
+  feed.classList.toggle('collapsed', collapsed);
+  btn.setAttribute('aria-expanded', String(!collapsed));
+  btn.dataset.i18n = collapsed ? 'Show' : 'Hide';
+  btn.textContent = t(btn.dataset.i18n);
+  try { localStorage.setItem('agentboard.activityCollapsed', collapsed ? '1' : '0'); } catch { /* Private browsing */ }
+}
+document.getElementById('activity-toggle')?.addEventListener('click', () => {
+  setActivityCollapsed(!document.getElementById('activity-feed').classList.contains('collapsed'));
+});
+try { if (localStorage.getItem('agentboard.activityCollapsed') === '1') setActivityCollapsed(true); } catch { /* Private browsing */ }
 
 function switchTab(tabName) {
   document.querySelectorAll('.modal-tab').forEach(t => {

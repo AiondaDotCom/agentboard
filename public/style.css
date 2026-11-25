@@ -838,6 +838,14 @@ select:focus {
   border-bottom: 1px solid var(--glass-border);
 }
 
+.activity-header-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.activity-feed.collapsed .activity-list { display: none; }
+.activity-feed.collapsed .activity-header { border-bottom: 0; }
+
 .activity-list {
   padding: 6px 24px;
   overflow-y: auto;
@@ -1822,6 +1830,15 @@ tr.overview-flash {
   font-size: 11.5px;
   line-height: 1.4;
 }
+
+.modal-drafts-section {
+  margin: 12px 0 18px;
+}
+.modal-drafts-section > summary {
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+.modal-drafts-section[hidden] { display: none; }
 
 .modal-blocked {
   margin: 10px 0;

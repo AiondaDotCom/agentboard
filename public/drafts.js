@@ -49,6 +49,9 @@
     try {
       const drafts = await json(endpoint(target));
       if (root._draftRequest !== request) return;
+      root.dispatchEvent(
+        new CustomEvent('drafts-count', { detail: drafts.length }),
+      );
       root.replaceChildren();
       if (!drafts.length) {
         root.append(
@@ -70,7 +73,7 @@
           : null;
       const chosen = state.selected || requested || key(drafts[0]);
       const picker = select(
-        drafts.map((d) => [key(d), `${d.title} · v${d.version}`]),
+        drafts.map((d) => [key(d), `${d.title} · v${d.version} · ${d.id.slice(0, 8)}`]),
         drafts.some((d) => key(d) === chosen) ? chosen : key(drafts[0]),
       );
       const pickerLabel = field('Screen and version', picker);
@@ -120,6 +123,24 @@
         const draft = drafts.find((d) => key(d) === picker.value);
         if (!draft) return;
         content.replaceChildren();
+        // Visible ID so the user can tell an AI exactly which draft fits
+        const reference = `${tr('Draft')} ${draft.id} v${draft.version} („${draft.title}“)`;
+        const idRow = element('div', undefined, 'draft-id');
+        const idCode = element('code', `${draft.id.slice(0, 8)} · v${draft.version}`);
+        idCode.title = reference;
+        const copy = element('button', tr('Copy ID'), 'draft-action');
+        copy.type = 'button';
+        copy.onclick = async () => {
+          try {
+            await navigator.clipboard.writeText(reference);
+            copy.textContent = tr('Copied');
+          } catch {
+            copy.textContent = tr('Copy failed');
+          }
+          setTimeout(() => { copy.textContent = tr('Copy ID'); }, 1600);
+        };
+        idRow.append(element('span', tr('Draft ID'), 'draft-caption'), idCode, copy);
+        content.append(idRow);
         const status = element('div', undefined, 'draft-state');
         const labels = {
           pending: 'Visual review pending',
@@ -248,6 +269,8 @@
       show();
     } catch (e) {
       if (root._draftRequest === request) {
+        // A failed load must stay visible, not hide the section as if empty
+        root.dispatchEvent(new CustomEvent('drafts-count', { detail: -1 }));
         root.replaceChildren(element('p', e.message, 'draft-error'));
       }
     }
