@@ -85,6 +85,7 @@
     const pos = new Map(d.nodes.map((n) => [n.id, {
       x: LANE_HEAD + PAD + rank.get(n.id) * COL + COL / 2,
       y: laneTop.get(n.lane) + sub.get(n.id) * ROW + ROW / 2,
+      rank: rank.get(n.id),
     }]));
     const columns = Math.max(...rank.values()) + 1;
     return { pos, back, laneTop, laneRows, width: LANE_HEAD + PAD * 2 + columns * COL, height: y };
@@ -115,32 +116,49 @@
       root.append(name);
     }
     const items = [];
+    const channels = new Map(), gaps = new Map();
     // Flows first so nodes paint over line ends
     for (const f of d.flows) {
       const a = byId.get(f.from), b = byId.get(f.to);
       const p = g.pos.get(f.from), q = g.pos.get(f.to);
-      let path, lx, ly;
-      if (g.back.has(f) || q.x <= p.x) {
-        // Loop back: leave below the source, run underneath, enter the target from below
-        const low = Math.max(p.y + halfHeight(a), q.y + halfHeight(b)) + 18;
-        path = `M${p.x},${p.y + halfHeight(a)} V${low} H${q.x} V${q.y + halfHeight(b)}`;
-        lx = (p.x + q.x) / 2;
-        ly = low - 7;
-      } else if (Math.abs(p.y - q.y) < 1) {
-        path = `M${p.x + halfWidth(a)},${p.y} H${q.x - halfWidth(b)}`;
-        lx = (p.x + halfWidth(a) + q.x - halfWidth(b)) / 2;
-        ly = p.y - 9;
+      // Routing rule: horizontal runs only in the free band at the bottom of a row,
+      // vertical runs only in the gaps between columns. Only same-row neighbours
+      // connect directly. So no line ever passes through a shape it does not belong to.
+      const boundary = (rank) => LANE_HEAD + PAD + rank * COL;
+      const next = (map, key) => { const n = map.get(key) ?? 0; map.set(key, n + 1); return n % 4; };
+      const tx = q.x - halfWidth(b);
+      let path, lx, ly, anchor = 'start';
+      if (q.rank === p.rank + 1 && Math.abs(p.y - q.y) < 1) {
+        path = `M${p.x + halfWidth(a)},${p.y} H${tx}`;
+        lx = (p.x + halfWidth(a) + tx) / 2;
+        ly = a.type === 'decision' ? p.y + 16 : p.y - 6;
+        anchor = 'middle';
       } else {
-        const mid = q.x - halfWidth(b) - 22;
-        path = `M${p.x + halfWidth(a)},${p.y} H${mid} V${q.y} H${q.x - halfWidth(b)}`;
-        lx = mid + (q.x - halfWidth(b) - mid) / 2 - 4;
-        ly = q.y - 9;
-        if (a.type === 'decision') {
-          // Leave a gateway from top/bottom so its exits are visibly separate
-          const sy = q.y < p.y ? p.y - GATE : p.y + GATE;
-          path = `M${p.x},${sy} V${q.y} H${q.x - halfWidth(b)}`;
-          lx = p.x + 8;
-          ly = q.y - 9;
+        let head, y0;
+        if (a.type === 'decision' && Math.abs(p.y - q.y) >= 1) {
+          // Gateways branch from top (target above) or bottom (target below)
+          const up = q.y < p.y;
+          y0 = up ? p.y - GATE - 10 : p.y + GATE + 10;
+          head = `M${p.x},${up ? p.y - GATE : p.y + GATE} V${y0}`;
+          lx = p.x + 6;
+          ly = up ? y0 - 5 : y0 + 13;
+        } else {
+          y0 = p.y;
+          head = `M${p.x + halfWidth(a)},${p.y}`;
+          lx = p.x + halfWidth(a) + 4;
+          // Below the line: above it sit the sub-ID badges of events and gateways
+          ly = p.y + 13;
+        }
+        // Each column gap is split: outgoing lines use its left half, incoming its right
+        // half, so an arrow into a node never lines up with a neighbour's exit stub.
+        const xs = boundary(p.rank + 1) - 8 - next(gaps, `out${p.rank}`) * 5;
+        if (q.rank === p.rank + 1) {
+          const x2 = boundary(q.rank) + 8 + next(gaps, `in${q.rank}`) * 5;
+          path = `${head} H${x2} V${q.y} H${tx}`;
+        } else {
+          const band = p.y + ROW / 2 - 9 - next(channels, `${p.y}`) * 5;
+          const x2 = boundary(q.rank) + 8 + next(gaps, `in${q.rank}`) * 5;
+          path = `${head} H${xs} V${band} H${x2} V${q.y} H${tx}`;
         }
       }
       const group = svg('g', { class: 'pd-flow', tabindex: 0, role: 'button', 'data-ref': f.ref ?? '' });
@@ -148,10 +166,8 @@
       group.append(svg('path', { d: path, class: 'pd-line', 'marker-end': `url(#pd-arrow-${d.id})` }));
       const caption = [f.ref, f.label].filter(Boolean).join(' · ');
       if (caption) {
-        // Long conditions wrap upwards so they never run into the target shape
-        const lines = wrap(caption, 15, 3);
-        const t = svg('text', { x: lx, y: ly - (lines.length - 1) * 13, class: 'pd-flow-label', 'text-anchor': g.back.has(f) || Math.abs(p.y - q.y) < 1 ? 'middle' : 'start' });
-        lines.forEach((line, i) => t.append(svg('tspan', { x: lx, dy: i ? 13 : 0 }, line)));
+        // One short line; the full condition is in the detail bar and the step list
+        const t = svg('text', { x: lx, y: ly, class: 'pd-flow-label', 'text-anchor': anchor }, wrap(caption, anchor === 'middle' ? 18 : 14, 1)[0]);
         group.append(t);
       }
       group.setAttribute('aria-label', `${f.ref ?? ''} ${a.label} → ${b.label}${f.label ? ` (${f.label})` : ''}`);
@@ -167,7 +183,11 @@
       } else if (n.type === 'decision') {
         group.append(svg('path', { d: `M${x},${y - GATE} L${x + GATE},${y} L${x},${y + GATE} L${x - GATE},${y} z`, class: 'pd-shape' }));
         group.append(svg('path', { d: `M${x - 9},${y - 9} L${x + 9},${y + 9} M${x + 9},${y - 9} L${x - 9},${y + 9}`, class: 'pd-gate-x' }));
-        group.append(textBlock(wrap(n.label, 20, 2), x, y - GATE - 14, 'pd-label pd-outside'));
+        const text = textBlock(wrap(n.label, 14, 3), x - GATE - 4, y - GATE + 2, 'pd-label pd-outside');
+        // Upper left of the gateway, bottom line just above the incoming arrow
+        text.setAttribute('text-anchor', 'end');
+        text.setAttribute('y', String(y - GATE + 2 - (text.children.length - 1) * 15));
+        group.append(text);
       } else {
         group.append(svg('circle', { cx: x, cy: y, r: EVENT, class: 'pd-shape' }));
         group.append(textBlock(wrap(n.label, 20, 2), x, y + EVENT + 16, 'pd-label pd-outside'));
