@@ -159,3 +159,52 @@ test('ticket opens as full page and stays so after reload', async ({ page, reque
   await page.getByRole('button', { name: 'Ticket wieder neben dem Board zeigen' }).click();
   await expect(page.locator('#board')).toBeVisible();
 });
+
+// Several triggers (#be30299e follow-up): each gets its own start event; a start that
+// joins later sits directly before its first step, and no line crosses a shape.
+const LINKS = {
+  title: 'Verdächtigen Link prüfen',
+  lanes: [{ id: 'scanner', name: 'Linkscanner' }, { id: 'kunde', name: 'Kunde' }, { id: 'system', name: 'System' }, { id: 'support', name: 'Support' }],
+  nodes: [
+    { id: 'scan', type: 'start', label: 'Findet verdächtigen Link', lane: 'scanner' },
+    { id: 'report', type: 'start', label: 'Meldet Link', lane: 'kunde' },
+    { id: 'fetch', type: 'task', label: 'Seite abrufen', lane: 'system' },
+    { id: 'analyze', type: 'task', label: 'Inhalt analysieren', lane: 'system' },
+    { id: 'bad', type: 'decision', label: 'Schädlich?', lane: 'system' },
+    { id: 'block', type: 'task', label: 'Link sperren', lane: 'support' },
+    { id: 'blocked', type: 'end', label: 'Link gesperrt', lane: 'support' },
+    { id: 'fine', type: 'end', label: 'Link bleibt frei', lane: 'system' },
+  ],
+  flows: [
+    { from: 'scan', to: 'fetch' }, { from: 'fetch', to: 'analyze' }, { from: 'report', to: 'analyze' },
+    { from: 'analyze', to: 'bad' }, { from: 'bad', to: 'block', label: 'ja' }, { from: 'bad', to: 'fine', label: 'nein' },
+    { from: 'block', to: 'blocked' },
+  ],
+};
+
+test('several start events: one per trigger, late trigger sits before its first step', async ({ page, request }) => {
+  const db = new Database(path.resolve(process.env['DB_PATH'] || 'agentboard-e2e.db'), { readonly: true });
+  const { value: key } = db.prepare("SELECT value FROM settings WHERE key = 'admin_api_key'").get() as { value: string };
+  db.close();
+  const admin = { 'X-Admin-Key': key };
+  const project = (await (await request.post('/api/projects', { headers: admin, data: { name: 'BPMN Starts ' + Date.now() } })).json()) as { id: string };
+  const agent = (await (await request.post('/api/agents', { headers: admin, data: { name: 'BPMN Starts ' + Date.now() } })).json()) as { apiKey: string };
+  const headers = { 'X-Api-Key': agent.apiKey };
+  const ticket = (await (await request.post(`/api/projects/${project.id}/tickets`, { headers, data: { title: 'Links prüfen' } })).json()) as { id: string };
+  expect((await request.post(`/api/projects/${project.id}/tickets/${ticket.id}/process-diagrams`, { headers, data: LINKS })).status()).toBe(201);
+  await page.request.post('/api/auth/login', { data: { key } });
+  await page.goto(`/projects/${project.id}/tickets/${ticket.id}`);
+  await expect(page.locator('#ticket-process g.pd-node')).toHaveCount(LINKS.nodes.length);
+  const result = await page.evaluate(() => {
+    const card = document.querySelector('#ticket-process .pd-card') as HTMLElement;
+    const box = (ref: string) => (card.querySelector(`g.pd-node[data-ref="${ref}"] .pd-shape`) as SVGGraphicsElement).getBBox();
+    const centerX = (ref: string) => { const b = box(ref); return b.x + b.width / 2; };
+    // S1 scan, S2 report, S3 fetch, S4 analyze
+    return { starts: card.querySelectorAll('g.pd-node[data-ref="S1"], g.pd-node[data-ref="S2"]').length, scan: centerX('S1'), report: centerX('S2'), fetch: centerX('S3'), analyze: centerX('S4') };
+  });
+  expect(result.starts).toBe(2);
+  expect(result.scan).toBeLessThan(result.fetch);
+  // The customer report joins at "analyze": drawn in the column right before it, not at the far left
+  expect(result.report).toBeCloseTo(result.fetch, 0);
+  expect(result.report).toBeLessThan(result.analyze);
+});

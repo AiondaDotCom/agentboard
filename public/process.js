@@ -67,6 +67,13 @@
     const forward = d.flows.filter((f) => !back.has(f));
     for (let i = 0; i < d.nodes.length; i++)
       for (const f of forward) rank.set(f.to, Math.max(rank.get(f.to), rank.get(f.from) + 1));
+    // Several triggers: a start that joins the process later sits directly before
+    // its first step instead of at the far left with a long arrow across.
+    for (const n of d.nodes) {
+      if (n.type !== 'start') continue;
+      const next = out.get(n.id).map((f) => rank.get(f.to));
+      rank.set(n.id, Math.max(0, Math.min(...next) - 1));
+    }
     // Stack nodes that share lane and column into sub-rows
     const slots = new Map(), sub = new Map(), laneRows = new Map(d.lanes.map((l) => [l.id, 1]));
     for (const n of d.nodes) {

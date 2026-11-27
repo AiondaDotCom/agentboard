@@ -103,6 +103,17 @@ describe('process diagrams (simplified BPMN)', () => {
     expect(validateDiagram(loop).nodes).toHaveLength(7);
   });
 
+  it('accepts one start event per independent trigger, joining later in the process', () => {
+    const d = createFolder();
+    d.lanes.push({ id: 'scanner', name: 'Link scanner' });
+    d.nodes.push({ id: 'scan', type: 'start', label: 'Finds suspicious link', lane: 'scanner' });
+    d.flows.push({ from: 'scan', to: 'store' });
+    const valid = validateDiagram(d);
+    expect(valid.nodes.filter((n) => n.type === 'start').map((n) => n.id)).toEqual(['start', 'scan']);
+    expect(MCP_INSTRUCTIONS).toMatch(/own start event/);
+    expect(MCP_INSTRUCTIONS).toMatch(/never fake alternative triggers with a decision/);
+  });
+
   it('lets humans read with their session and only agents write over REST', async () => {
     const base = `/api/projects/${projectId}/tickets/${ticketId}/process-diagrams`;
     await request(app).get(base).expect(401);
