@@ -4,6 +4,9 @@
   "description": "Lightweight Kanban board for AI agents",
   "type": "module",
   "main": "dist/server.js",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc && cp src/db/schema.sql dist/db/schema.sql",
@@ -25,7 +28,7 @@
     "@apollo/server": "^4.11.0",
     "@graphql-tools/schema": "^10.0.31",
     "@modelcontextprotocol/sdk": "^1.27.1",
-    "better-sqlite3": "^11.6.0",
+    "better-sqlite3": "^13.2.0",
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "graphql": "^16.9.0",
@@ -39,7 +42,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
-    "@types/better-sqlite3": "^7.6.12",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",

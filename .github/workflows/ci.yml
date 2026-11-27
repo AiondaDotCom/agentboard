@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Weekly run so a new Node release that breaks us shows up without a commit.
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22 = maintenance LTS, 24 = active LTS, 26 = current; "latest" follows new releases automatically.
+        node: ['22', '24', '26', 'latest']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: node -v && npm -v
+      - run: npm ci
+      - name: Native SQLite binding loads
+        run: node -e "const D=require('better-sqlite3'); console.log(new D(':memory:').prepare('select sqlite_version() v').get())"
+      - run: npm run build
+      - run: npx vitest run
