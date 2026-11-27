@@ -29,8 +29,9 @@ import { createHtmlDraftRoutes } from './api/routes/html-drafts.js';
 import { createProcessDiagramRoutes } from './api/routes/process-diagrams.js';
 import { createRuntimeRoutes } from './api/routes/runtime.js';
 import { createAuditMiddleware } from './api/middleware/audit.js';
+import { loadServerConfig, localBaseUrl, describeBinding } from './config.js';
 
-const PORT = parseInt(process.env['PORT'] ?? '3000', 10);
+const SERVER_CONFIG = loadServerConfig();
 
 // ---------------------------------------------------------------------------
 // Session management (persistent in SQLite)
@@ -490,17 +491,20 @@ async function start(): Promise<void> {
     expressMiddleware(apollo) as unknown as express.RequestHandler,
   );
 
-  httpServer.listen(PORT, () => {
+  const base = localBaseUrl(SERVER_CONFIG);
+  const wsBase = base.replace(/^http/, 'ws');
+  httpServer.listen(SERVER_CONFIG.port, SERVER_CONFIG.host, () => {
     console.info(`
 ╔═══════════════════════════════════════════════════════════╗
-║           🤖  A I   A G E N T B O A R D  🤖             ║
+║           🤖  A I   A G E N T B O A R D  🤖
 ╠═══════════════════════════════════════════════════════════╣
-║  HTTP:      http://localhost:${PORT}                       ║
-║  GraphQL:   http://localhost:${PORT}/graphql                ║
-║  WebSocket: ws://localhost:${PORT}/graphql                  ║
-║  MCP:       http://localhost:${PORT}/mcp                    ║
+║  Listen:    ${describeBinding(SERVER_CONFIG.host)}, port ${String(SERVER_CONFIG.port)}
+║  HTTP:      ${base}
+║  GraphQL:   ${base}/graphql
+║  WebSocket: ${wsBase}/graphql
+║  MCP:       ${base}/mcp
 ╠═══════════════════════════════════════════════════════════╣
-║  Admin Key: ${ADMIN_API_KEY}  ║
+║  Admin Key: ${ADMIN_API_KEY}
 ╚═══════════════════════════════════════════════════════════╝
     `);
   });

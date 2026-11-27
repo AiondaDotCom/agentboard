@@ -102,6 +102,22 @@ npm install
 open http://localhost:3000
 ```
 
+### Port and bind address
+
+The server reads two environment variables:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PORT` | `3000` | TCP port (1–65535) |
+| `HOST` | all interfaces | Bind address passed to `listen()`: `127.0.0.1` / `localhost` / `::1` = this machine only, a concrete IP (e.g. `192.168.1.10`) = only that interface, `0.0.0.0` = all IPv4, `::` or unset = all interfaces |
+
+```bash
+HOST=127.0.0.1 PORT=8080 ./run.sh   # only reachable locally, on port 8080
+PORT=8080 ./stop_server.sh          # stop_server.sh and demo.sh honour PORT/HOST too
+```
+
+Invalid values abort the start with a clear error. For remote access, also set `PUBLIC_URL` (used for draft preview links).
+
 ## Notifications and preferences
 
 Click the bell in the top-right corner to follow changes across **all projects**, even while viewing a different board. The feed updates while it is open; no refresh or repeated click is needed. Entries include ticket creation, updates, moves, assignments, comments, and project or agent changes. Reading tickets and runtime heartbeats do not fill this inbox.
@@ -128,7 +144,7 @@ Agents use these MCP tools (also supported by `batch`):
 
 The MCP initialization instructions, tool descriptions and draft results explicitly require agents to **open the saved preview, capture screenshots, and actually inspect the images**. A passing review requires screenshots of the same version in mobile and desktop widths, each in light and dark mode. HTML source inspection or successful automated tests alone do not qualify. Without browser access the review remains pending. The server validates uploaded PNGs and evidence coverage; it cannot independently prove that an agent looked at an image, so explicit attestation and findings remain part of the record. Agents cannot grant user approval through MCP.
 
-Draft results include `previewPath`, `previewUrl` and four `captureUrls`. Set **`PUBLIC_URL`** to the browser-accessible Agentboard origin (e.g. `https://board.example.com`) for remote installations; the default is `http://localhost:${PORT:-3000}`. Use an authenticated browser session to open these URLs. The capture view renders the same saved content without board controls. Set the browser viewport to the URL's width; increase `height` (up to 12000 CSS pixels) or scroll to inspect long screens. These controls do not change the saved source or version. They do not automatically take screenshots or perform an AI review.
+Draft results include `previewPath`, `previewUrl` and four `captureUrls`. Set **`PUBLIC_URL`** to the browser-accessible Agentboard origin (e.g. `https://board.example.com`) for remote installations; the default is `http://localhost:${PORT:-3000}` (or the configured `HOST`). Use an authenticated browser session to open these URLs. The capture view renders the same saved content without board controls. Set the browser viewport to the URL's width; increase `height` (up to 12000 CSS pixels) or scroll to inspect long screens. These controls do not change the saved source or version. They do not automatically take screenshots or perform an AI review.
 
 REST equivalents live under `/api/projects/:id/tickets/:ticketId/drafts`: `POST` creates a draft/version, `GET` lists versions, and `/:draftId/versions/:version` provides metadata, `/content`, `/screenshots` (POST), `/screenshots/:screenshotId` (GET) and `/review` (POST). Agent writes require `X-Api-Key`; reads require an agent key or UI session. `/approve` is a separate JSON POST requiring the human UI session. HTML source and PNGs are persisted in SQLite and included in normal database backups. Source is limited to 512 KiB; each version accepts at most 16 PNGs of up to 8 MiB base64, with decoded image limits.
 

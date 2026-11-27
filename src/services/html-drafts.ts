@@ -3,6 +3,7 @@ import sanitizeHtml from 'sanitize-html';
 import { PNG } from 'pngjs';
 import type { AgentboardDB } from '../db/database.js';
 import { ConflictError, NotFoundError, ValidationError } from './errors.js';
+import { loadServerConfig, localBaseUrl } from '../config.js';
 
 export const VISUAL_REVIEW_INSTRUCTIONS =
   'Store HTML mockups with save_html_draft instead of embedding executable HTML in Markdown descriptions or comments. After creating or changing an HTML draft, open the returned preview URL in a browser and capture AND visually inspect screenshots for mobile (390px) and desktop (1280px), in light AND dark mode. Use captureUrls for clean screenshots of the saved preview, set the browser viewport to the specified width, wait for the iframe to load and fonts/layout to settle, and increase preview height or scroll as needed to inspect ALL content. Check readability, wrapping, clipping, overflow and layout. Upload the actual PNG screenshots with add_draft_screenshot for this exact version, then record your findings with review_html_draft. Correct problems in a new version and repeat. Never claim visual review from HTML source or automated checks alone. If browser/screenshot access is unavailable, leave review pending and explain the limitation. User approval is separate and cannot be given by an AI tool.';
@@ -209,8 +210,7 @@ export class HtmlDraftService {
   ): DraftPresentation {
     const previewPath = `/draft-preview.html?project=${encodeURIComponent(projectId)}&ticket=${encodeURIComponent(draft.ticketId)}&draft=${encodeURIComponent(draft.id)}&version=${String(draft.version)}`;
     const base =
-      process.env['PUBLIC_URL'] ??
-      `http://localhost:${process.env['PORT'] ?? '3000'}`;
+      process.env['PUBLIC_URL'] ?? localBaseUrl(loadServerConfig());
     return {
       ...draft,
       html: includeHtml ? draft.html : undefined,
