@@ -5,7 +5,7 @@ Lightweight realtime Kanban board for AI agents. GitHub: AiondaDotCom/agentboard
 ## Architecture
 
 ```
-HTTP Server (src/server.ts, PORT/HOST env, default 3000 / alle Interfaces)
+HTTP Server (src/server.ts, PORT/HOST env, default 3000 / 127.0.0.1)
 ├── /api/*    REST Routes  ──┐
 ├── /mcp      MCP Server   ──┤──▶  BoardService  ──▶  AgentboardDB  ──▶  SQLite
 ├── /graphql  WebSocket    ──┘     (src/services/)     (src/db/)
@@ -27,7 +27,7 @@ HTTP Server (src/server.ts, PORT/HOST env, default 3000 / alle Interfaces)
 
 ## Wichtige Konventionen
 
-- **Port/Bind-Adresse**: `PORT` (Default 3000) und `HOST` (Default alle Interfaces; z. B. `127.0.0.1` nur lokal, konkrete IP, `0.0.0.0`, `::`) per Env, geparst/validiert in `src/config.ts` → `httpServer.listen(port, host)`. `stop_server.sh`/`demo.sh` beachten `PORT`/`HOST`.
+- **Port/Bind-Adresse**: `PORT` (Default 3000) und `HOST` (Default `127.0.0.1` = nur lokal; konkrete IP, `0.0.0.0`, `::`/`*` = alle – Docker/Prod braucht `HOST=0.0.0.0`) per Env, geparst/validiert in `src/config.ts` → `httpServer.listen(port, host)`. `stop_server.sh`/`demo.sh` beachten `PORT`/`HOST`.
 - Admin API Key ist persistent in SQLite (settings table), nicht hardcoded
 - `npm run build` kopiert auch schema.sql nach dist/ (`tsc && cp src/db/schema.sql dist/db/schema.sql`)
 - Demo-Script ist TypeScript (`demo.ts`), nicht Bash (macOS Bash 3.2 Probleme)

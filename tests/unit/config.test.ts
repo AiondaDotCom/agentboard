@@ -1,5 +1,6 @@
 import {
   DEFAULT_PORT,
+  DEFAULT_HOST,
   parsePort,
   parseHost,
   loadServerConfig,
@@ -35,11 +36,12 @@ describe("parsePort", () => {
 });
 
 describe("parseHost", () => {
-  it("returns undefined (all interfaces) when unset, blank or *", () => {
-    expect(parseHost(undefined)).toBeUndefined();
-    expect(parseHost("")).toBeUndefined();
-    expect(parseHost("  ")).toBeUndefined();
-    expect(parseHost("*")).toBeUndefined();
+  it("defaults to 127.0.0.1 when unset or blank, * means all interfaces", () => {
+    expect(parseHost(undefined)).toBe(DEFAULT_HOST);
+    expect(DEFAULT_HOST).toBe("127.0.0.1");
+    expect(parseHost("")).toBe("127.0.0.1");
+    expect(parseHost("  ")).toBe("127.0.0.1");
+    expect(parseHost("*")).toBe("::");
   });
 
   it("accepts IPv4, IPv6 and hostnames", () => {
@@ -62,7 +64,7 @@ describe("parseHost", () => {
 
 describe("loadServerConfig", () => {
   it("uses defaults for an empty env", () => {
-    expect(loadServerConfig({})).toEqual({ port: 3000, host: undefined });
+    expect(loadServerConfig({})).toEqual({ port: 3000, host: "127.0.0.1" });
   });
 
   it("reads PORT and HOST", () => {
@@ -78,7 +80,7 @@ describe("loadServerConfig", () => {
     process.env["PORT"] = "4321";
     delete process.env["HOST"];
     try {
-      expect(loadServerConfig()).toEqual({ port: 4321, host: undefined });
+      expect(loadServerConfig()).toEqual({ port: 4321, host: "127.0.0.1" });
     } finally {
       if (prevPort === undefined) delete process.env["PORT"];
       else process.env["PORT"] = prevPort;
@@ -89,15 +91,14 @@ describe("loadServerConfig", () => {
 
 describe("isWildcardHost / localBaseUrl / describeBinding", () => {
   it("detects wildcard hosts", () => {
-    expect(isWildcardHost(undefined)).toBe(true);
     expect(isWildcardHost("0.0.0.0")).toBe(true);
     expect(isWildcardHost("::")).toBe(true);
     expect(isWildcardHost("127.0.0.1")).toBe(false);
   });
 
   it("builds a browser-usable base URL", () => {
-    expect(localBaseUrl({ port: 3000, host: undefined })).toBe(
-      "http://localhost:3000",
+    expect(localBaseUrl({ port: 3000, host: "127.0.0.1" })).toBe(
+      "http://127.0.0.1:3000",
     );
     expect(localBaseUrl({ port: 8080, host: "0.0.0.0" })).toBe(
       "http://localhost:8080",
@@ -115,7 +116,6 @@ describe("isWildcardHost / localBaseUrl / describeBinding", () => {
   });
 
   it("describes the binding", () => {
-    expect(describeBinding(undefined)).toBe("all interfaces");
     expect(describeBinding("::")).toBe("all interfaces");
     expect(describeBinding("0.0.0.0")).toBe("all IPv4 interfaces");
     expect(describeBinding("127.0.0.1")).toBe("127.0.0.1");

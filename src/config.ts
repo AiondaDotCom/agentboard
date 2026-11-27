@@ -4,18 +4,18 @@ import { isIP } from "node:net";
  * Where the HTTP server listens.
  *
  * - `PORT`: TCP port (1-65535), default 3000.
- * - `HOST`: bind address. Default: all interfaces (IPv4 + IPv6), as before.
+ * - `HOST`: bind address. Default: `127.0.0.1` (only this machine).
  *   `localhost` / `127.0.0.1` / `::1` = only this machine,
  *   a concrete IP (e.g. `192.168.1.10`) = only that interface,
- *   `0.0.0.0` = all IPv4, `::` = all interfaces.
+ *   `0.0.0.0` = all IPv4, `::` or `*` = all interfaces.
  */
 export interface ServerConfig {
   port: number;
-  /** undefined = Node default (all interfaces) */
-  host: string | undefined;
+  host: string;
 }
 
 export const DEFAULT_PORT = 3000;
+export const DEFAULT_HOST = "127.0.0.1";
 
 const HOSTNAME_RE =
   /^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$/;
@@ -33,9 +33,10 @@ export function parsePort(raw: string | undefined): number {
   return port;
 }
 
-export function parseHost(raw: string | undefined): string | undefined {
+export function parseHost(raw: string | undefined): string {
   let value = raw?.trim() ?? "";
-  if (value === "" || value === "*") return undefined;
+  if (value === "") return DEFAULT_HOST;
+  if (value === "*") return "::";
   // Allow bracketed IPv6 like "[::1]"
   if (value.startsWith("[") && value.endsWith("]")) value = value.slice(1, -1);
   if (isIP(value) === 0 && !HOSTNAME_RE.test(value)) {
@@ -53,23 +54,20 @@ export function loadServerConfig(
 }
 
 /** True if the server is reachable from other machines (not loopback only). */
-export function isWildcardHost(host: string | undefined): boolean {
-  return host === undefined || host === "0.0.0.0" || host === "::";
+export function isWildcardHost(host: string): boolean {
+  return host === "0.0.0.0" || host === "::";
 }
 
 /** Browser-usable base URL for the configured listen address. */
 export function localBaseUrl(config: ServerConfig): string {
-  const host =
-    config.host === undefined || isWildcardHost(config.host)
-      ? "localhost"
-      : config.host;
+  const host = isWildcardHost(config.host) ? "localhost" : config.host;
   const urlHost = isIP(host) === 6 ? `[${host}]` : host;
   return `http://${urlHost}:${String(config.port)}`;
 }
 
 /** Human-readable description of the bind address for the startup banner. */
-export function describeBinding(host: string | undefined): string {
-  if (host === undefined || host === "::") return "all interfaces";
+export function describeBinding(host: string): string {
+  if (host === "::") return "all interfaces";
   if (host === "0.0.0.0") return "all IPv4 interfaces";
   return host;
 }

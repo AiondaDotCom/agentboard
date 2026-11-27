@@ -109,7 +109,7 @@ The server reads two environment variables:
 | Variable | Default | Meaning |
 |---|---|---|
 | `PORT` | `3000` | TCP port (1–65535) |
-| `HOST` | all interfaces | Bind address passed to `listen()`: `127.0.0.1` / `localhost` / `::1` = this machine only, a concrete IP (e.g. `192.168.1.10`) = only that interface, `0.0.0.0` = all IPv4, `::` or unset = all interfaces |
+| `HOST` | `127.0.0.1` | Bind address passed to `listen()`. Unset = this machine only (`127.0.0.1`; also `localhost` / `::1`), a concrete IP (e.g. `192.168.1.10`) = only that interface, `0.0.0.0` = all IPv4, `::` or `*` = all interfaces. **Docker/remote access needs `HOST=0.0.0.0`** |
 
 ```bash
 HOST=127.0.0.1 PORT=8080 ./run.sh   # only reachable locally, on port 8080
