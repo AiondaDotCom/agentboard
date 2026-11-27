@@ -13,10 +13,12 @@ jobs:
   test:
     name: Node ${{ matrix.node }}
     runs-on: ubuntu-latest
+    # "latest" can resolve to an unreleased Node (e.g. 27 alpha): early warning only.
+    continue-on-error: ${{ matrix.node == 'latest' }}
     strategy:
       fail-fast: false
       matrix:
-        # 22 = maintenance LTS, 24 = active LTS, 26 = current; "latest" follows new releases automatically.
+        # 22 = maintenance LTS, 24 = active LTS, 26 = current (gating); "latest" = newest build, non-gating.
         node: ['22', '24', '26', 'latest']
     steps:
       - uses: actions/checkout@v4
