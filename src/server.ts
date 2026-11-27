@@ -24,6 +24,7 @@ import { createProjectRoutes } from './api/routes/projects.js';
 import { createTicketRoutes, createHumanTicketRoutes } from './api/routes/tickets.js';
 import { createAuditRoutes } from './api/routes/audit.js';
 import { createBatchRoutes } from './api/routes/batch.js';
+import { createSearchRoutes } from './api/routes/search.js';
 import { createHtmlDraftRoutes } from './api/routes/html-drafts.js';
 import { createProcessDiagramRoutes } from './api/routes/process-diagrams.js';
 import { createRuntimeRoutes } from './api/routes/runtime.js';
@@ -117,6 +118,7 @@ app.use('/api/projects/:id', createTicketRoutes(service));
 app.use('/api/projects/:id', createHumanTicketRoutes(service));
 app.use('/api/audit', createAuditRoutes(service));
 app.use('/api/batch', createBatchRoutes(service));
+app.use('/api/search', createSearchRoutes(service));
 
 // Agent keys route (session-protected – only for authenticated admin UI)
 app.get('/api/agents/keys', (req, res): void => {

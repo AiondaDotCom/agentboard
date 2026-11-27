@@ -11,7 +11,7 @@ import { HtmlDraftService, type ScreenshotInput } from './html-drafts.js';
 import { ProcessDiagramService } from './process-diagrams.js';
 import type { AgentboardDB } from '../db/database.js';
 import { pubsub, EVENTS } from '../graphql/pubsub.js';
-import { BATCH_OPS, COLUMN_ID_RE, DEFAULT_COLUMNS, DEFAULT_PRIORITY, MAX_BATCH_OPS, PRIORITIES, WORK_TYPES, WORK_TYPE_FILTERS } from '../types.js';
+import { BATCH_OPS, COLUMN_ID_RE, DEFAULT_COLUMNS, DEFAULT_PRIORITY, MAX_BATCH_OPS, MAX_SEARCH_RESULTS, PRIORITIES, WORK_TYPES, WORK_TYPE_FILTERS } from '../types.js';
 import type {
   Agent,
   AgentPublic,
@@ -33,6 +33,7 @@ import type {
   WorkTypeFilter,
   RuntimeReport,
   RuntimeStatus,
+  TicketSearchResult,
 } from '../types.js';
 import { NotFoundError, ValidationError, DuplicateError, ConflictError } from './errors.js';
 
@@ -416,6 +417,22 @@ export class BoardService {
       this.logAndPublishActivity(viewerAgentId, projectId, ticket.id, 'ticket_read', `Read ticket "${ticket.title}"`);
     }
     return ticket;
+  }
+
+  /**
+   * Search tickets across all projects by ticket ID (full UUID, short ID,
+   * fragment; leading '#' ignored) or title. Empty queries return nothing.
+   */
+  searchTickets(query: unknown, limit: unknown = 20): TicketSearchResult[] {
+    const q = typeof query === 'string' ? query.trim().replace(/^#/, '').trim() : '';
+    if (q === '') return [];
+    const parsed = typeof limit === 'number' ? limit : Number(limit);
+    const max = Number.isInteger(parsed) && parsed > 0 ? Math.min(parsed, MAX_SEARCH_RESULTS) : 20;
+    return this.db.searchTickets(q, max).map((ticket) => {
+      const project = this.requireProject(ticket.projectId);
+      const column = project.columns.find((c) => c.id === ticket.column);
+      return { ...ticket, projectName: project.name, columnTitle: column?.title ?? ticket.column };
+    });
   }
 
   getTicketsByProject(projectId: string, actorId?: string | null, options?: TicketListOptions): PaginatedResult<Ticket> {

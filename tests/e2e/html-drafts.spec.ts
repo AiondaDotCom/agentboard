@@ -58,7 +58,7 @@ test('HTML draft preview, isolation, versions and human approval', async ({
   await page.goto(`/projects/${project.id}/tickets/${ticket.id}`);
   await expect(page.locator('#modal-drafts-section')).toBeVisible();
   await expect(page.locator('#ticket-drafts .draft-id code')).toContainText(
-    `${draft.id.slice(0, 8)} · v${draft.version}`,
+    `${draft.id} · v${draft.version}`,
   );
   await expect(page.locator('#ticket-drafts')).toContainText(
     'Visuelle Prüfung ausstehend',

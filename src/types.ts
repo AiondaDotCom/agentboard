@@ -233,6 +233,15 @@ export interface Ticket {
   updatedAt: string;
 }
 
+/** Ticket hit of the cross-project search, with its project and column names. */
+export interface TicketSearchResult extends Ticket {
+  projectName: string;
+  columnTitle: string;
+}
+
+/** Upper bound for search results returned in one request. */
+export const MAX_SEARCH_RESULTS = 50;
+
 export interface Comment {
   id: string;
   ticketId: string;

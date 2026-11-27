@@ -669,6 +669,30 @@ export class AgentboardDB {
     return row !== undefined ? this.mapTicketRow(row) : undefined;
   }
 
+  /**
+   * Search tickets across all projects by ID (full, prefix or fragment) or
+   * title. Exact ID hits come first, then ID prefixes, then other ID
+   * fragments, then title matches (most recently updated first).
+   */
+  searchTickets(query: string, limit: number): Ticket[] {
+    const escaped = query.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`);
+    const contains = `%${escaped}%`;
+    const rows = this.db
+      .prepare(
+        `${TICKET_SELECT}
+         WHERE LOWER(t.id) LIKE ? ESCAPE '\\' OR LOWER(t.title) LIKE ? ESCAPE '\\'
+         ORDER BY CASE
+           WHEN LOWER(t.id) = ? THEN 0
+           WHEN LOWER(t.id) LIKE ? ESCAPE '\\' THEN 1
+           WHEN LOWER(t.id) LIKE ? ESCAPE '\\' THEN 2
+           ELSE 3 END,
+         t.updated_at DESC
+         LIMIT ?`,
+      )
+      .all(contains, contains, query.toLowerCase(), `${escaped}%`, contains, limit) as TicketRow[];
+    return rows.map((r) => this.mapTicketRow(r));
+  }
+
   getTicketsByProject(projectId: string, options?: TicketListOptions): PaginatedResult<Ticket> {
     const column = options?.column;
     const workType = options?.work_type;

@@ -241,7 +241,11 @@
     "workType": "Arbeitsart",
     "assigneeId": "Zuständig",
     "blockedReason": "Blockierungsgrund",
-    "dependsOn": "Abhängigkeiten"
+    "dependsOn": "Abhängigkeiten",
+    "Search ticket ID or title": "Ticket-ID oder Titel suchen",
+    "Search tickets": "Tickets suchen",
+    "No tickets found": "Keine Tickets gefunden",
+    "Search failed": "Suche fehlgeschlagen"
   }
 };
   try {

@@ -321,7 +321,7 @@
     }
 
     function show() {
-      idCode.textContent = `${current.id.slice(0, 8)} · v${current.version}`;
+      idCode.textContent = `${current.id} · v${current.version}`;
       idCode.title = reference();
       const { root, items } = draw(current, (entry) => select(entry, items));
       stage.replaceChildren(root);

@@ -20,6 +20,10 @@
       <button type="button" class="logo-text" onclick="showOverview()">AI agentboard</button>
     </div>
     <div class="header-right">
+      <div class="ticket-search" role="search">
+        <input type="search" id="ticket-search-input" class="ticket-search-input" placeholder="Search ticket ID or title" data-i18n-placeholder="Search ticket ID or title" aria-label="Search tickets" data-i18n-aria-label="Search tickets" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="ticket-search-results" aria-autocomplete="list">
+        <ul id="ticket-search-results" class="ticket-search-results" role="listbox" hidden></ul>
+      </div>
       <button type="button" id="current-project-name" class="current-project-name" style="display:none" onclick="showOverview()"></button>
       <button id="edit-columns-btn" data-i18n="⚙ Columns" class="btn-small btn-edit-columns" style="display:none" onclick="openColumnsModal()" title="Configure the board columns of this project" data-i18n-title="Configure the board columns of this project">&#9881;&#65039; Columns</button>
       <span id="runtime-status" class="runtime-status runtime-offline" title="No current runtime heartbeat" data-i18n-title="No current runtime heartbeat"><span class="runtime-dot"></span><span id="runtime-status-text" data-i18n="0 AIs working">0 AIs working</span></span>

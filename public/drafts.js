@@ -73,7 +73,7 @@
           : null;
       const chosen = state.selected || requested || key(drafts[0]);
       const picker = select(
-        drafts.map((d) => [key(d), `${d.title} · v${d.version} · ${d.id.slice(0, 8)}`]),
+        drafts.map((d) => [key(d), `${d.title} · v${d.version} · ${d.id}`]),
         drafts.some((d) => key(d) === chosen) ? chosen : key(drafts[0]),
       );
       const pickerLabel = field('Screen and version', picker);
@@ -126,7 +126,7 @@
         // Visible ID so the user can tell an AI exactly which draft fits
         const reference = `${tr('Draft')} ${draft.id} v${draft.version} („${draft.title}“)`;
         const idRow = element('div', undefined, 'draft-id');
-        const idCode = element('code', `${draft.id.slice(0, 8)} · v${draft.version}`);
+        const idCode = element('code', `${draft.id} · v${draft.version}`);
         idCode.title = reference;
         const copy = element('button', tr('Copy ID'), 'draft-action');
         copy.type = 'button';

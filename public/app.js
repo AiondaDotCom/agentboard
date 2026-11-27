@@ -260,7 +260,7 @@ async function loadProjectOverview() {
     return `
       <td>
         <div class="overview-project-name">${escapeHtml(p.name)}</div>
-        <div class="overview-project-id" title="${t('Click to copy full ID')}" onclick="event.stopPropagation(); copyId('${p.id}', this)">#${p.id.slice(0, 8)}</div>
+        <div class="overview-project-id" title="${t('Click to copy full ID')}" onclick="event.stopPropagation(); copyId('${p.id}', this)">${p.id}</div>
         ${p.description ? `<div class="overview-project-desc">${escapeHtml(p.description)}</div>` : ''}
       </td>
       <td class="overview-cols">${chips}</td>
@@ -752,7 +752,7 @@ function createTicketCard(ticket) {
     : '';
 
   card.innerHTML = `
-    <div class="ticket-id" title="${t('Click to copy full ID')}" onclick="event.stopPropagation(); copyId('${ticket.id}', this)">#${ticket.id.slice(0, 8)}</div>
+    <div class="ticket-id" title="${t('Click to copy full ID')}" onclick="event.stopPropagation(); copyId('${ticket.id}', this)">${ticket.id}</div>
     <div class="ticket-title"><button type="button" class="ticket-open" title="${t('Open ticket')}">${escapeHtml(ticket.title)}</button></div>
     ${ticket.blockedReason ? `<div class="ticket-blocked" title="${t('Blocked reason')}">&#x26d4; ${escapeHtml(ticket.blockedReason)}</div>` : ''}
     ${ticket.description ? `<div class="ticket-desc">${escapeHtml(plainPreview(ticket.description))}</div>` : ''}
@@ -1094,7 +1094,7 @@ async function openModal(projectId, ticketId, { fromRoute = false, refresh = fal
 
   // Header
   const modalIdEl = document.getElementById('modal-ticket-id');
-  modalIdEl.textContent = `#${ticket.id.slice(0, 8)}`;
+  modalIdEl.textContent = ticket.id;
   modalIdEl.title = t('Click to copy full ID');
   modalIdEl.onclick = () => copyId(ticket.id, modalIdEl);
   const badge = document.getElementById('modal-column-badge');
@@ -1167,12 +1167,12 @@ async function openModal(projectId, ticketId, { fromRoute = false, refresh = fal
       const doneId = doneColumnId();
       const items = deps.map(depId => {
         const dep = boardTickets.find(t => t.id === depId);
-        if (!dep) return `<div class="modal-dep-item">\u{2753} #${escapeHtml(depId.slice(0, 8))} (${t('not found')})</div>`;
+        if (!dep) return `<div class="modal-dep-item">\u{2753} ${escapeHtml(depId)} (${t('not found')})</div>`;
         const done = dep.column === doneId;
         return `
           <div class="modal-dep-item ${done ? 'dep-done' : 'dep-open'}">
             ${done ? '\u{2705}' : '\u{23f3}'}
-            <span class="modal-dep-id">#${dep.id.slice(0, 8)}</span>
+            <span class="modal-dep-id">${dep.id}</span>
             <span class="modal-dep-title">${escapeHtml(dep.title)}</span>
             <span class="modal-dep-col">${escapeHtml(columnTitle(dep.column))}</span>
           </div>`;
@@ -1526,7 +1526,7 @@ async function openAgentsModal() {
         <div class="agent-row-info">
           <div class="agent-row-name">\u{1f916} ${escapeHtml(a.name)}</div>
           <div class="agent-row-key">${escapeHtml(a.apiKey)}</div>
-          <div class="agent-row-meta">ID: ${a.id.slice(0, 8)} &middot; ${t('Created')}: ${formatTime(a.createdAt)}</div>
+          <div class="agent-row-meta">ID: ${a.id} &middot; ${t('Created')}: ${formatTime(a.createdAt)}</div>
         </div>
         <button class="btn-copy" onclick="copyApiKey(this, '${escapeHtml(a.apiKey)}')">${t('Copy')}</button>
       `;
@@ -2051,6 +2051,132 @@ async function init() {
     }
   });
 }
+
+// ---------------------------------------------------------------------------
+// Ticket search (header): full ticket ID, short ID, ID fragment or title,
+// across all projects. Enter opens the first hit, "/" focuses the field.
+// ---------------------------------------------------------------------------
+
+let ticketSearchTimer = null;
+let ticketSearchVersion = 0;
+let ticketSearchHits = [];
+let ticketSearchActive = -1;
+
+function setTicketSearchOpen(open) {
+  const input = document.getElementById('ticket-search-input');
+  const list = document.getElementById('ticket-search-results');
+  list.hidden = !open;
+  input.setAttribute('aria-expanded', String(open));
+  if (!open) {
+    ticketSearchActive = -1;
+    input.removeAttribute('aria-activedescendant');
+  }
+}
+
+function highlightTicketSearch(index) {
+  const items = document.querySelectorAll('#ticket-search-results .ticket-search-hit');
+  ticketSearchActive = items.length ? (index + items.length) % items.length : -1;
+  items.forEach((el, i) => el.setAttribute('aria-selected', String(i === ticketSearchActive)));
+  const input = document.getElementById('ticket-search-input');
+  if (ticketSearchActive >= 0) {
+    input.setAttribute('aria-activedescendant', items[ticketSearchActive].id);
+    items[ticketSearchActive].scrollIntoView({ block: 'nearest' });
+  } else {
+    input.removeAttribute('aria-activedescendant');
+  }
+}
+
+function renderTicketSearchResults(hits, message) {
+  const list = document.getElementById('ticket-search-results');
+  ticketSearchHits = hits;
+  if (message) {
+    list.innerHTML = `<li class="ticket-search-empty">${escapeHtml(message)}</li>`;
+  } else {
+    list.innerHTML = hits.map((h, i) => `
+      <li id="ticket-search-hit-${i}" class="ticket-search-hit" role="option" aria-selected="false" data-index="${i}">
+        <span class="ticket-search-hit-title">${escapeHtml(h.title)}</span>
+        <span class="ticket-search-hit-id">${escapeHtml(h.id)}</span>
+        <span class="ticket-search-hit-meta">${escapeHtml(h.projectName)} · ${escapeHtml(h.columnTitle)}</span>
+      </li>`).join('');
+  }
+  setTicketSearchOpen(true);
+  highlightTicketSearch(message ? -1 : 0);
+}
+
+async function runTicketSearch(query) {
+  const version = ++ticketSearchVersion;
+  if (query.replace(/^\s*#/, '').trim() === '') {
+    ticketSearchHits = [];
+    setTicketSearchOpen(false);
+    return;
+  }
+  try {
+    const hits = await fetchJSON(`/api/search?q=${encodeURIComponent(query)}&limit=20`);
+    if (version !== ticketSearchVersion) return;
+    renderTicketSearchResults(hits, hits.length ? null : t('No tickets found'));
+  } catch (e) {
+    if (version !== ticketSearchVersion) return;
+    console.error('[agentboard] Search failed:', e);
+    renderTicketSearchResults([], t('Search failed'));
+  }
+}
+
+async function openTicketSearchHit(index) {
+  const hit = ticketSearchHits[index];
+  if (!hit) return;
+  const input = document.getElementById('ticket-search-input');
+  setTicketSearchOpen(false);
+  input.value = '';
+  input.blur();
+  navigate(ticketPath(hit.projectId, hit.id));
+  await applyRoute();
+}
+
+function initTicketSearch() {
+  const input = document.getElementById('ticket-search-input');
+  const list = document.getElementById('ticket-search-results');
+  input.addEventListener('input', () => {
+    clearTimeout(ticketSearchTimer);
+    ticketSearchTimer = setTimeout(() => runTicketSearch(input.value), 150);
+  });
+  input.addEventListener('focus', () => {
+    if (ticketSearchHits.length && input.value.trim()) setTicketSearchOpen(true);
+  });
+  input.addEventListener('keydown', async (event) => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (list.hidden) return;
+      highlightTicketSearch(ticketSearchActive + (event.key === 'ArrowDown' ? 1 : -1));
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      clearTimeout(ticketSearchTimer);
+      // Pasted ID + immediate Enter: search first, then open the best hit.
+      if (list.hidden || ticketSearchActive < 0) await runTicketSearch(input.value);
+      await openTicketSearchHit(Math.max(ticketSearchActive, 0));
+    } else if (event.key === 'Escape') {
+      setTicketSearchOpen(false);
+      input.blur();
+    }
+  });
+  // mousedown (not click) so the input's blur does not close the list first
+  list.addEventListener('mousedown', (event) => {
+    const hit = event.target.closest('.ticket-search-hit');
+    if (!hit) return;
+    event.preventDefault();
+    openTicketSearchHit(Number(hit.dataset.index));
+  });
+  input.addEventListener('blur', () => setTimeout(() => setTicketSearchOpen(false), 100));
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return;
+    const target = event.target;
+    if (target.closest && target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    event.preventDefault();
+    input.focus();
+    input.select();
+  });
+}
+
+initTicketSearch();
 
 // Ensure the loading screen is painted before init runs
 requestAnimationFrame(() => {

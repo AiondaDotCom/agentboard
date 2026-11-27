@@ -2414,3 +2414,77 @@ body.ticket-full #ticket-modal:has(#modal-process-section:not([hidden])) .modal-
   #ticket-modal { flex: none; width: 100%; height: 85vh; height: 85dvh; }
   #ticket-modal .modal-ticket { border-width: 1px 0 0; }
 }
+
+/* ---------------------------------------------------------------------------
+   Ticket search (header) + full-length IDs
+   --------------------------------------------------------------------------- */
+.ticket-search {
+  position: relative;
+  flex: 0 1 300px;
+  min-width: 180px;
+  margin-right: auto;
+}
+.ticket-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-light);
+  background: var(--glass);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+}
+.ticket-search-input::placeholder { color: var(--text-dim); }
+.ticket-search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.ticket-search-results {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: min(460px, calc(100vw - 24px));
+  max-height: min(420px, 70vh);
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--surface-solid);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-hover);
+  z-index: 200;
+}
+.ticket-search-results[hidden] { display: none; }
+.ticket-search-hit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ticket-search-hit[aria-selected="true"], .ticket-search-hit:hover { background: var(--accent-soft); }
+.ticket-search-hit[aria-selected="true"] { box-shadow: inset 2px 0 0 var(--accent); }
+.ticket-search-hit-title { font-size: 13px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.ticket-search-hit-id {
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+.ticket-search-hit-meta { font-size: 11px; color: var(--text-dim); }
+.ticket-search-empty { padding: 10px; font-size: 13px; color: var(--text-dim); }
+
+/* Full UUIDs: wrap instead of overflowing narrow cards/panels */
+.ticket-id, .overview-project-id, .modal-dep-item .modal-dep-id, .draft-id code { overflow-wrap: anywhere; }
+.pd-header .pd-id { white-space: normal; overflow-wrap: anywhere; }
+
+@media (max-width: 760px), (max-width: 1000px) and (pointer: coarse) {
+  .ticket-search { flex: 1 1 100%; order: -1; margin-right: 0; }
+  .ticket-search-input { min-height: 44px; font-size: 16px; }
+  .ticket-search-results { width: 100%; }
+  .modal-header-ref .modal-ticket-id { flex-shrink: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+}

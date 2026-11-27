@@ -49,7 +49,7 @@ test('process diagram with copyable sub-IDs and large view', async ({ page, requ
   await expect(section).toBeVisible();
   await expect(page.locator('#modal-process-count')).toHaveText('(1)');
   const card = page.locator('#ticket-process .pd-card');
-  await expect(card.locator('.pd-id').first()).toHaveText(`${diagram.id.slice(0, 8)} · v1`);
+  await expect(card.locator('.pd-id').first()).toHaveText(`${diagram.id} · v1`);
   await expect(card.locator('g.pd-node')).toHaveCount(5);
 
   await card.locator('g.pd-node[data-ref="S2"]').click();

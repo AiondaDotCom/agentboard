@@ -613,7 +613,7 @@ test.describe('Agentboard E2E – Comprehensive Feature Test', () => {
   }) => {
     const url = baseURL ?? 'http://localhost:3000';
 
-    await apiCreateTicket(url, agent.apiKey, project.id, 'Modal Test Ticket', {
+    const ticket = await apiCreateTicket(url, agent.apiKey, project.id, 'Modal Test Ticket', {
       column: 'in_progress',
       description: '## Description\n\nThis is a **markdown** description.',
     });
@@ -638,8 +638,8 @@ test.describe('Agentboard E2E – Comprehensive Feature Test', () => {
     const descHtml = await page.locator('#modal-desc').innerHTML();
     expect(descHtml).toContain('<strong>markdown</strong>');
 
-    // Ticket ID shown (truncated)
-    await expect(page.locator('#modal-ticket-id')).toContainText('#');
+    // Full ticket ID shown (searchable with the browser's find)
+    await expect(page.locator('#modal-ticket-id')).toHaveText(ticket.id);
 
     // Author displayed
     await expect(page.locator('#modal-author')).toContainText(agent.id.slice(0, 1) ? '' : '', {});
