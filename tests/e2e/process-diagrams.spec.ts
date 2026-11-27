@@ -197,8 +197,8 @@ test('several start events: one per trigger, late trigger sits before its first 
   await expect(page.locator('#ticket-process g.pd-node')).toHaveCount(LINKS.nodes.length);
   const result = await page.evaluate(() => {
     const card = document.querySelector('#ticket-process .pd-card') as HTMLElement;
-    const box = (ref: string) => (card.querySelector(`g.pd-node[data-ref="${ref}"] .pd-shape`) as SVGGraphicsElement).getBBox();
-    const centerX = (ref: string) => { const b = box(ref); return b.x + b.width / 2; };
+    const box = (ref: string): DOMRect => (card.querySelector(`g.pd-node[data-ref="${ref}"] .pd-shape`) as SVGGraphicsElement).getBBox();
+    const centerX = (ref: string): number => { const b = box(ref); return b.x + b.width / 2; };
     // S1 scan, S2 report, S3 fetch, S4 analyze
     return { starts: card.querySelectorAll('g.pd-node[data-ref="S1"], g.pd-node[data-ref="S2"]').length, scan: centerX('S1'), report: centerX('S2'), fetch: centerX('S3'), analyze: centerX('S4') };
   });

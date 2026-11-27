@@ -36,7 +36,7 @@ describe('versioned HTML drafts', () => {
     );
   });
   afterEach(() => db.close());
-  const png = (width: number) => {
+  const png = (width: number): string => {
     return PNG.sync.write(new PNG({ width, height: 800 })).toString('base64');
   };
   it('keeps immutable source versions and resets review and human approval on changes', () => {

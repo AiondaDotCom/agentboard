@@ -4,6 +4,7 @@ import type { BoardService } from '../../services/board.service.js';
 import type { AuthenticatedRequest } from '../middleware/auth.js';
 import { createAuthMiddleware } from '../middleware/auth.js';
 import { handleServiceError, routeParam, agentIdOf } from './helpers.js';
+import type { WorkTypeFilter } from '../../types.js';
 
 // ---------------------------------------------------------------------------
 // Ticket + Comment routes (nested under /api/projects/:id)
@@ -53,9 +54,12 @@ export function createTicketRoutes(service: BoardService): Router {
       const projectId = routeParam(req, 'id');
       const column = typeof req.query['column'] === 'string' ? req.query['column'] : undefined;
       const workType = typeof req.query['work_type'] === 'string' ? req.query['work_type'] : undefined;
-      const page = req.query['page'] ? Number(req.query['page']) : undefined;
-      const perPage = req.query['per_page'] ? Number(req.query['per_page']) : undefined;
-      res.json(service.getTicketsByProject(projectId, null, { column: column as any, work_type: workType as any, page, per_page: perPage }));
+      const pageParam = req.query['page'];
+      const perPageParam = req.query['per_page'];
+      const page = pageParam !== undefined && pageParam !== '' ? Number(pageParam) : undefined;
+      const perPage = perPageParam !== undefined && perPageParam !== '' ? Number(perPageParam) : undefined;
+      // work_type is validated by the service (unknown values → 400)
+      res.json(service.getTicketsByProject(projectId, null, { column, work_type: workType as WorkTypeFilter | undefined, page, per_page: perPage }));
     } catch (err) {
       handleServiceError(res, err);
     }
@@ -164,7 +168,7 @@ export function createTicketRoutes(service: BoardService): Router {
       const { assignee_id } = req.body as { assignee_id?: unknown };
       const actorId = agentIdOf(req as AuthenticatedRequest);
 
-      if (assignee_id && typeof assignee_id === 'string') {
+      if (typeof assignee_id === 'string' && assignee_id !== '') {
         const ticket = service.assignTicket(projectId, ticketId, assignee_id, actorId);
         res.json(ticket);
       } else {
@@ -282,7 +286,7 @@ export function createHumanTicketRoutes(service: BoardService): Router {
       const ticketId = routeParam(req, 'ticketId');
       const { assignee_id } = req.body as { assignee_id?: unknown };
 
-      if (assignee_id && typeof assignee_id === 'string') {
+      if (typeof assignee_id === 'string' && assignee_id !== '') {
         res.json(service.assignTicket(projectId, ticketId, assignee_id));
       } else {
         res.json(service.unassignTicket(projectId, ticketId));

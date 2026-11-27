@@ -7,7 +7,7 @@ import type { AuthenticatedRequest } from '../middleware/auth.js';
 import { NotFoundError, ValidationError, DuplicateError, ConflictError } from '../../services/errors.js';
 
 /** Read a route param defensively (missing params become ''). */
-export function routeParam(req: { params: Record<string, unknown> }, name: string): string {
+export function routeParam(req: { params: Record<string, string | string[] | undefined> }, name: string): string {
   return String(req.params[name] ?? '');
 }
 

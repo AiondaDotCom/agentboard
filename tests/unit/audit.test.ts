@@ -58,7 +58,7 @@ describe('Audit Middleware', () => {
   });
 
   it('should capture agent ID when authenticated', async () => {
-    const agent = db.createAgent('bot1');
+    db.createAgent('bot1');
 
     // The agent routes don't require auth, so we'd need a route that uses auth
     // But the audit middleware captures agentId if set on the request

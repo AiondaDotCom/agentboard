@@ -36,8 +36,8 @@ export class PubSub {
     // Create an async iterator that yields events
     // Use a queue-based approach
     const emitter = this.emitter;
-    const pullQueue: Array<(value: IteratorResult<Record<string, unknown>>) => void> = [];
-    const pushQueue: Array<Record<string, unknown>> = [];
+    const pullQueue: ((value: IteratorResult<Record<string, unknown>>) => void)[] = [];
+    const pushQueue: Record<string, unknown>[] = [];
     let done = false;
 
     const handler = (payload: Record<string, unknown>): void => {
@@ -93,8 +93,7 @@ export class PubSub {
     // Wrap with filter
     return {
       async next(): Promise<IteratorResult<Record<string, unknown>>> {
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
+        for (;;) {
           const result = await iterator.next();
           if (result.done === true) return result;
           if (filterFn(result.value)) return result;

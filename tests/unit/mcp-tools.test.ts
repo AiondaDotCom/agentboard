@@ -8,7 +8,7 @@ import { EVENTS, pubsub } from '../../src/graphql/pubsub.js';
 // The MCP SDK server is exercised end-to-end via the running HTTP server;
 // here we register the tools against a stub to unit-test every handler.
 
-type ToolResult = { content: [{ type: 'text'; text: string }]; isError?: boolean };
+interface ToolResult { content: [{ type: 'text'; text: string }]; isError?: boolean }
 type ToolHandler = (args: Record<string, unknown>) => Promise<ToolResult>;
 
 function collectTools(service: BoardService, agentId: string, agentName: string): Map<string, ToolHandler> {
@@ -23,6 +23,8 @@ function collectTools(service: BoardService, agentId: string, agentName: string)
   return tools;
 }
 
+// Parsed JSON payload of arbitrary shape; tests assert on it dynamically.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function parse(result: ToolResult): any {
   expect(result.isError).toBeUndefined();
   return JSON.parse(result.content[0].text);
@@ -64,10 +66,10 @@ describe('MCP tools', () => {
     const custom = parse(await tools.get('create_project')!({
       name: 'custom', columns: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }],
     }));
-    expect(custom.columns.map((c: any) => c.id)).toEqual(['a', 'b']);
+    expect(custom.columns.map((c) => c.id)).toEqual(['a', 'b']);
 
     const list = parse(await tools.get('list_projects')!({}));
-    expect(list.map((p: any) => p.name)).toContain('via-mcp');
+    expect(list.map((p) => p.name)).toContain('via-mcp');
 
     const got = parse(await tools.get('get_project')!({ project_id: created.id }));
     expect(got.columns).toHaveLength(6);
@@ -79,7 +81,7 @@ describe('MCP tools', () => {
       columns: [{ id: 'x', title: 'X' }, { id: 'y', title: 'Y' }],
     }));
     expect(updated.name).toBe('renamed');
-    expect(updated.columns.map((c: any) => c.id)).toEqual(['x', 'y']);
+    expect(updated.columns.map((c) => c.id)).toEqual(['x', 'y']);
 
     const deleted = parse(await tools.get('delete_project')!({ project_id: created.id }));
     expect(deleted).toEqual({ deleted: true });
@@ -178,12 +180,12 @@ describe('MCP tools', () => {
 
     parse(await tools.get('update_ticket')!({ project_id: projectId, ticket_id: t.id, title: 'T2' }));
     const history = parse(await tools.get('get_ticket_history')!({ project_id: projectId, ticket_id: t.id }));
-    expect(history.some((r: any) => r.field === 'title')).toBe(true);
+    expect(history.some((r) => r.field === 'title')).toBe(true);
   });
 
   it('list_agents / whoami', async () => {
     const agents = parse(await tools.get('list_agents')!({}));
-    expect(agents.some((a: any) => a.name === 'mcp-bot')).toBe(true);
+    expect(agents.some((a) => a.name === 'mcp-bot')).toBe(true);
 
     const who = parse(await tools.get('whoami')!({}));
     expect(who).toEqual({ agentId, agentName: 'mcp-bot' });

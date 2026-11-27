@@ -54,7 +54,7 @@ describe('Ticket search', () => {
     const fragment = service.createTicket(projectA, 'z');
     const title = service.createTicket(projectA, 'q');
     const raw = db as unknown as { db: { prepare(sql: string): { run(...a: unknown[]): void } } };
-    const setId = (from: string, to: string) => raw.db.prepare('UPDATE tickets SET id = ? WHERE id = ?').run(to, from);
+    const setId = (from: string, to: string): void => raw.db.prepare('UPDATE tickets SET id = ? WHERE id = ?').run(to, from);
     setId(exact.id, 'abc');
     setId(prefix.id, 'abcdef');
     setId(fragment.id, 'zzabc');

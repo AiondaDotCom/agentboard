@@ -153,14 +153,12 @@ export function createHtmlDraftRoutes(
   router.get(base + '/screenshots/:screenshotId', readAuth, (req, res) => {
     try {
       res.setHeader('X-Content-Type-Options', 'nosniff');
-      res
-        .type('png')
-        .send(
-          service.htmlDrafts.image(
-            ...target(req),
-            routeParam(req, 'screenshotId'),
-          ),
-        );
+      // Look up first: a missing screenshot must answer as JSON, not as image/png.
+      const png = service.htmlDrafts.image(
+        ...target(req),
+        routeParam(req, 'screenshotId'),
+      );
+      res.type('png').send(png);
     } catch (e) {
       handleServiceError(res, e);
     }

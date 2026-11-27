@@ -12,6 +12,7 @@ import { PROCESS_DIAGRAM_INSTRUCTIONS, NODE_TYPES, LIMITS } from './services/pro
 import type { BoardService } from './services/board.service.js';
 import { BATCH_OPS, MAX_BATCH_OPS } from './types.js';
 import type { Ticket } from './types.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 // ---------------------------------------------------------------------------
 // Server instructions – shown to the AI client on connect.
@@ -38,24 +39,24 @@ export function registerMcpTools(
   agentName: string,
 ): void {
   // Helpers
-  function ok(data: unknown) {
-    return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+  function ok(data: unknown): CallToolResult {
+    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
   }
-  function err(message: string) {
-    return { content: [{ type: 'text' as const, text: message }], isError: true as const };
+  function err(message: string): CallToolResult {
+    return { content: [{ type: 'text', text: message }], isError: true };
   }
-  function wrap<T>(fn: () => T) {
+  function wrap(fn: () => unknown): CallToolResult {
     try { return ok(fn()); }
     catch (e) { return err(e instanceof Error ? e.message : 'Failed'); }
   }
 
   // --- Batch (registered first so clients see it prominently) ---
-  mcp.tool('batch', `PREFERRED whenever you have more than one operation to perform: executes up to ${MAX_BATCH_OPS} board operations in ONE call (one round-trip instead of N – much faster and saves tokens). Each entry is {"op": <tool name>, "args": {...}} with exactly the same semantics and argument names as the tool of the same name (supported: ${BATCH_OPS.join(', ')}). Operations run sequentially in array order and are reported individually as {op, ok, result|error} – a failed operation does NOT stop or roll back the others, so always check each result. Note: ids of tickets created earlier in the same batch are not referenceable by later operations.`, {
+  mcp.registerTool('batch', { description: `PREFERRED whenever you have more than one operation to perform: executes up to ${MAX_BATCH_OPS} board operations in ONE call (one round-trip instead of N – much faster and saves tokens). Each entry is {"op": <tool name>, "args": {...}} with exactly the same semantics and argument names as the tool of the same name (supported: ${BATCH_OPS.join(', ')}). Operations run sequentially in array order and are reported individually as {op, ok, result|error} – a failed operation does NOT stop or roll back the others, so always check each result. Note: ids of tickets created earlier in the same batch are not referenceable by later operations.`, inputSchema: {
     operations: z.array(z.object({
       op: z.enum(BATCH_OPS).describe('Operation to execute – same name, semantics and args as the corresponding individual tool'),
       args: z.record(z.string(), z.unknown()).optional().describe('Arguments for the operation, exactly as for the tool of the same name (e.g. project_id, ticket_id, title, column, ...)'),
     })).min(1).max(MAX_BATCH_OPS).describe('Operations to execute sequentially in array order'),
-  }, async ({ operations }) => wrap(() => {
+  } }, ({ operations }) => wrap(() => {
     const results = service.executeBatch(operations, agentId);
     // Same token-saving trim as the standalone list_tickets tool
     return results.map((r) => {
@@ -99,34 +100,34 @@ export function registerMcpTools(
     a => wrap(() => service.processDiagrams.get(a.project_id, a.ticket_id, a.diagram_id, a.version)));
 
   // --- Projects ---
-  mcp.tool('list_projects', 'List all projects on the board', {},
-    async () => ok(service.getAllProjects(agentId)));
+  mcp.registerTool('list_projects', { description: 'List all projects on the board', inputSchema: {} },
+    () => ok(service.getAllProjects(agentId)));
 
-  mcp.tool('get_project', 'Get details of a specific project, including its board column configuration (columns array; first column = where new tickets land, last column = finished/done)',
-    { project_id: z.string().describe('Project ID') },
-    async ({ project_id }) => wrap(() => service.getProject(project_id, agentId)));
+  mcp.registerTool('get_project', { description: 'Get details of a specific project, including its board column configuration (columns array; first column = where new tickets land, last column = finished/done)', inputSchema:
+    { project_id: z.string().describe('Project ID') } },
+    ({ project_id }) => wrap(() => service.getProject(project_id, agentId)));
 
   const columnsParam = z.array(z.object({
     id: z.string().describe('Column id slug (lowercase, e.g. "in_progress")'),
     title: z.string().describe('Display name (e.g. "In Progress")'),
   })).min(2).max(20).optional().describe('Board columns in order. Convention: FIRST column is where new tickets land, LAST column counts as finished (releases group claims, satisfies dependencies). Default: backlog, blocked, in_progress, rework, in_review, done.');
 
-  mcp.tool('create_project', 'Create a new project (admin). Board columns are configurable per project via "columns".',
+  mcp.registerTool('create_project', { description: 'Create a new project (admin). Board columns are configurable per project via "columns".', inputSchema:
     {
       name: z.string().describe('Project name'),
       description: z.string().optional().describe('Project description'),
       columns: columnsParam,
-    },
-    async ({ name, description, columns }) => wrap(() => service.createProject(name, description, agentId, columns)));
+    } },
+    ({ name, description, columns }) => wrap(() => service.createProject(name, description, agentId, columns)));
 
-  mcp.tool('update_project', 'Update a project: rename, change description, or reconfigure the board columns. Columns that still contain tickets cannot be removed (move the tickets first).',
+  mcp.registerTool('update_project', { description: 'Update a project: rename, change description, or reconfigure the board columns. Columns that still contain tickets cannot be removed (move the tickets first).', inputSchema:
     {
       project_id: z.string().describe('Project ID'),
       name: z.string().optional().describe('New project name'),
       description: z.string().optional().describe('New project description'),
       columns: columnsParam,
-    },
-    async ({ project_id, name, description, columns }) => {
+    } },
+    ({ project_id, name, description, columns }) => {
       const updates: { name?: string; description?: string; columns?: unknown } = {};
       if (name !== undefined) updates.name = name;
       if (description !== undefined) updates.description = description;
@@ -134,20 +135,20 @@ export function registerMcpTools(
       return wrap(() => service.updateProject(project_id, updates, agentId));
     });
 
-  mcp.tool('delete_project', 'Delete a project (admin)',
-    { project_id: z.string().describe('Project ID') },
-    async ({ project_id }) => wrap(() => { service.deleteProject(project_id, agentId); return { deleted: true }; }));
+  mcp.registerTool('delete_project', { description: 'Delete a project (admin)', inputSchema:
+    { project_id: z.string().describe('Project ID') } },
+    ({ project_id }) => wrap(() => { service.deleteProject(project_id, agentId); return { deleted: true }; }));
 
   // --- Tickets ---
-  mcp.tool('list_tickets', 'List all tickets in a project (returns summary without description – use get_ticket for full details). Use "work_type" to pull only the tickets that match a worker: mechanical work for a cheap deterministic model, judgment work for a reasoning model.',
+  mcp.registerTool('list_tickets', { description: 'List all tickets in a project (returns summary without description – use get_ticket for full details). Use "work_type" to pull only the tickets that match a worker: mechanical work for a cheap deterministic model, judgment work for a reasoning model.', inputSchema:
     {
       project_id: z.string().describe('Project ID'),
       column: z.string().optional().describe('Filter by column id – must be one of the project\'s configured columns (see get_project)'),
       work_type: z.enum(['mechanical', 'judgment', 'none']).optional().describe('Filter by kind of work: "mechanical" (solution shape is known), "judgment" (design / root-cause / trade-offs), "none" (still unclassified)'),
       page: z.number().int().min(1).optional().describe('Page number (default: 1)'),
       per_page: z.number().int().min(1).max(100).optional().describe('Items per page (default: 50, max: 100)'),
-    },
-    async ({ project_id, column, work_type, page, per_page }) => wrap(() => {
+    } },
+    ({ project_id, column, work_type, page, per_page }) => wrap(() => {
       const result = service.getTicketsByProject(project_id, agentId, { column, work_type, page, per_page });
       return {
         ...result,
@@ -155,12 +156,12 @@ export function registerMcpTools(
       };
     }));
 
-  mcp.tool('get_ticket', 'Get details of a specific ticket including description',
-    { project_id: z.string().describe('Project ID'), ticket_id: z.string().describe('Ticket ID') },
-    async ({ project_id, ticket_id }) =>
+  mcp.registerTool('get_ticket', { description: 'Get details of a specific ticket including description', inputSchema:
+    { project_id: z.string().describe('Project ID'), ticket_id: z.string().describe('Ticket ID') } },
+    ({ project_id, ticket_id }) =>
       wrap(() => service.getTicket(project_id, ticket_id, agentId)));
 
-  mcp.tool('create_ticket', 'Create a new ticket in a project. To create SEVERAL tickets, use the `batch` tool instead (much faster). Descriptions support Markdown formatting (bold, lists, headings, code blocks, etc.) – please use Markdown for better readability. Use "group" to bundle related tickets that must be handled by a single agent (assigning one ticket of a group claims the whole group). Use "depends_on" for tickets that must be finished first – a ticket with unfinished dependencies can only stay in the first column.', {
+  mcp.registerTool('create_ticket', { description: 'Create a new ticket in a project. To create SEVERAL tickets, use the `batch` tool instead (much faster). Descriptions support Markdown formatting (bold, lists, headings, code blocks, etc.) – please use Markdown for better readability. Use "group" to bundle related tickets that must be handled by a single agent (assigning one ticket of a group claims the whole group). Use "depends_on" for tickets that must be finished first – a ticket with unfinished dependencies can only stay in the first column.', inputSchema: {
     project_id: z.string().describe('Project ID'),
     title: z.string().describe('Ticket title'),
     description: z.string().optional().describe('Ticket description (supports Markdown: **bold**, *italic*, - lists, ## headings, `code`, etc.)'),
@@ -170,10 +171,10 @@ export function registerMcpTools(
     depends_on: z.array(z.string()).optional().describe('Ticket ids this ticket depends on. While any of them is not in the last (done) column, this ticket cannot be moved out of the first column.'),
     priority: z.enum(['low', 'medium', 'high', 'critical']).optional().describe('Ticket priority (default: medium). Shown as a colored badge on the board; tickets are ordered by priority within a column.'),
     work_type: z.enum(['mechanical', 'judgment']).optional().describe('What kind of work this is: "mechanical" = the shape of the solution is known and the diff is checkable against a hard done-criterion; "judgment" = design, root-cause analysis, weighing trade-offs. Decides which kind of worker can take the ticket – do NOT put model names here. Omit if you honestly cannot tell.'),
-  }, async ({ project_id, title, description, column, group, blocked_reason, depends_on, priority, work_type }) =>
+  } }, ({ project_id, title, description, column, group, blocked_reason, depends_on, priority, work_type }) =>
     wrap(() => service.createTicket(project_id, title, description, column, agentId, group, blocked_reason, depends_on, priority, work_type)));
 
-  mcp.tool('update_ticket', 'Update a ticket (title, description, column, group, blocked_reason, depends_on, priority, or work_type). To update SEVERAL tickets, use the `batch` tool instead (much faster). Descriptions support Markdown formatting. Moving to a column other than the first is refused while the ticket has unfinished dependencies – the error explains which tickets must be finished first.', {
+  mcp.registerTool('update_ticket', { description: 'Update a ticket (title, description, column, group, blocked_reason, depends_on, priority, or work_type). To update SEVERAL tickets, use the `batch` tool instead (much faster). Descriptions support Markdown formatting. Moving to a column other than the first is refused while the ticket has unfinished dependencies – the error explains which tickets must be finished first.', inputSchema: {
     project_id: z.string().describe('Project ID'),
     ticket_id: z.string().describe('Ticket ID'),
     title: z.string().optional().describe('New title'),
@@ -184,7 +185,7 @@ export function registerMcpTools(
     depends_on: z.array(z.string()).optional().describe('Replaces the full dependency list (ticket ids that must be done first). Pass an empty array to clear all dependencies.'),
     priority: z.enum(['low', 'medium', 'high', 'critical']).optional().describe('New ticket priority. Shown as a colored badge on the board; tickets are ordered by priority within a column.'),
     work_type: z.enum(['mechanical', 'judgment', '']).optional().describe('New kind of work: "mechanical" (solution shape is known) or "judgment" (design / root-cause / trade-offs). Pass an empty string to clear the classification.'),
-  }, async ({ project_id, ticket_id, title, description, column, group, blocked_reason, depends_on, priority, work_type }) => {
+  } }, ({ project_id, ticket_id, title, description, column, group, blocked_reason, depends_on, priority, work_type }) => {
     const updates: {
       title?: string; description?: string; column?: string; group?: string | null;
       blockedReason?: string | null; dependsOn?: unknown; priority?: unknown; workType?: unknown;
@@ -200,61 +201,61 @@ export function registerMcpTools(
     return wrap(() => service.updateTicket(project_id, ticket_id, updates, agentId));
   });
 
-  mcp.tool('move_ticket', 'Move a ticket to a different column. To move SEVERAL tickets, use the `batch` tool instead (much faster). Refused (with an explanation of which tickets must be finished first) while the ticket has unfinished dependencies and the target is not the first column.', {
+  mcp.registerTool('move_ticket', { description: 'Move a ticket to a different column. To move SEVERAL tickets, use the `batch` tool instead (much faster). Refused (with an explanation of which tickets must be finished first) while the ticket has unfinished dependencies and the target is not the first column.', inputSchema: {
     project_id: z.string().describe('Project ID'),
     ticket_id: z.string().describe('Ticket ID'),
     column: z.string().describe('Target column id – must be one of the project\'s configured columns (see get_project)'),
-  }, async ({ project_id, ticket_id, column }) =>
+  } }, ({ project_id, ticket_id, column }) =>
     wrap(() => service.moveTicket(project_id, ticket_id, column, agentId)));
 
-  mcp.tool('move_ticket_to_project', 'Move a ticket to a DIFFERENT project (it keeps its id, title, comments and history). Lands in the target project\'s first column unless "column" says otherwise. Dependencies never cross projects: the ticket\'s own dependencies are dropped, and the move is refused while other tickets still depend on it.', {
+  mcp.registerTool('move_ticket_to_project', { description: 'Move a ticket to a DIFFERENT project (it keeps its id, title, comments and history). Lands in the target project\'s first column unless "column" says otherwise. Dependencies never cross projects: the ticket\'s own dependencies are dropped, and the move is refused while other tickets still depend on it.', inputSchema: {
     project_id: z.string().describe('Current project ID of the ticket'),
     ticket_id: z.string().describe('Ticket ID'),
     target_project_id: z.string().describe('Project ID to move the ticket to'),
     column: z.string().optional().describe('Column id in the TARGET project (default: the target project\'s first column). Check get_project for the target\'s column configuration – column ids differ per project.'),
-  }, async ({ project_id, ticket_id, target_project_id, column }) =>
+  } }, ({ project_id, ticket_id, target_project_id, column }) =>
     wrap(() => service.moveTicketToProject(project_id, ticket_id, target_project_id, column, agentId)));
 
-  mcp.tool('assign_ticket', 'Assign a ticket to an agent, or unassign it. Note: if the ticket belongs to a group, assigning it claims the WHOLE group for that agent – other agents cannot take tickets of a claimed group until it is released (all tickets done or unassigned).', {
+  mcp.registerTool('assign_ticket', { description: 'Assign a ticket to an agent, or unassign it. Note: if the ticket belongs to a group, assigning it claims the WHOLE group for that agent – other agents cannot take tickets of a claimed group until it is released (all tickets done or unassigned).', inputSchema: {
     project_id: z.string().describe('Project ID'),
     ticket_id: z.string().describe('Ticket ID'),
     assignee_id: z.string().optional().describe('Agent ID to assign (omit or empty to unassign)'),
-  }, async ({ project_id, ticket_id, assignee_id }) => {
-    if (assignee_id) {
+  } }, ({ project_id, ticket_id, assignee_id }) => {
+    if (assignee_id !== undefined && assignee_id !== '') {
       return wrap(() => service.assignTicket(project_id, ticket_id, assignee_id, agentId));
     }
     return wrap(() => service.unassignTicket(project_id, ticket_id, agentId));
   });
 
-  mcp.tool('delete_ticket', 'Delete a ticket',
-    { project_id: z.string().describe('Project ID'), ticket_id: z.string().describe('Ticket ID') },
-    async ({ project_id, ticket_id }) => wrap(() => { service.deleteTicket(project_id, ticket_id, agentId); return { deleted: true }; }));
+  mcp.registerTool('delete_ticket', { description: 'Delete a ticket', inputSchema:
+    { project_id: z.string().describe('Project ID'), ticket_id: z.string().describe('Ticket ID') } },
+    ({ project_id, ticket_id }) => wrap(() => { service.deleteTicket(project_id, ticket_id, agentId); return { deleted: true }; }));
 
   // --- Comments ---
-  mcp.tool('add_comment', 'Add a comment to a ticket. Comments support Markdown formatting for better readability.', {
+  mcp.registerTool('add_comment', { description: 'Add a comment to a ticket. Comments support Markdown formatting for better readability.', inputSchema: {
     project_id: z.string().describe('Project ID'),
     ticket_id: z.string().describe('Ticket ID'),
     body: z.string().describe('Comment text (supports Markdown: **bold**, *italic*, - lists, `code`, etc.)'),
-  }, async ({ project_id, ticket_id, body }) =>
+  } }, ({ project_id, ticket_id, body }) =>
     wrap(() => service.createComment(project_id, ticket_id, agentId, body)));
 
-  mcp.tool('get_comments', 'Get all comments on a ticket',
-    { project_id: z.string().describe('Project ID'), ticket_id: z.string().describe('Ticket ID') },
-    async ({ project_id, ticket_id }) =>
+  mcp.registerTool('get_comments', { description: 'Get all comments on a ticket', inputSchema:
+    { project_id: z.string().describe('Project ID'), ticket_id: z.string().describe('Ticket ID') } },
+    ({ project_id, ticket_id }) =>
       wrap(() => service.getCommentsByTicket(project_id, ticket_id, agentId)));
 
   // --- History ---
-  mcp.tool('get_ticket_history', 'Get the full revision history of a ticket (who changed what, when)',
-    { project_id: z.string().describe('Project ID'), ticket_id: z.string().describe('Ticket ID') },
-    async ({ project_id, ticket_id }) =>
+  mcp.registerTool('get_ticket_history', { description: 'Get the full revision history of a ticket (who changed what, when)', inputSchema:
+    { project_id: z.string().describe('Project ID'), ticket_id: z.string().describe('Ticket ID') } },
+    ({ project_id, ticket_id }) =>
       wrap(() => service.getRevisionsByTicket(project_id, ticket_id, agentId)));
 
   // --- Agents ---
-  mcp.tool('list_agents', 'List all registered agents', {},
-    async () => ok(service.getAllAgents(agentId)));
+  mcp.registerTool('list_agents', { description: 'List all registered agents', inputSchema: {} },
+    () => ok(service.getAllAgents(agentId)));
 
-  mcp.tool('whoami', 'Show which agent identity this MCP server is using', {},
-    async () => ok({ agentId, agentName }));
+  mcp.registerTool('whoami', { description: 'Show which agent identity this MCP server is using', inputSchema: {} },
+    () => ok({ agentId, agentName }));
 }
 
 // ---------------------------------------------------------------------------
@@ -272,25 +273,28 @@ export function getOrCreateMcpAgent(service: BoardService, name: string): string
 // Standalone stdio entry point (for use WITHOUT the HTTP server)
 // ---------------------------------------------------------------------------
 
-const isMain = process.argv[1]?.endsWith('mcp-server.ts') || process.argv[1]?.endsWith('mcp-server.js');
+const isMain = process.argv[1]?.endsWith('mcp-server.ts') === true || process.argv[1]?.endsWith('mcp-server.js') === true;
 
 /* v8 ignore start -- process entry point, only runs via `npx tsx src/mcp-server.ts` */
 if (isMain) {
-  const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
-  const { AgentboardDB } = await import('./db/database.js');
-  const { BoardService } = await import('./services/board.service.js');
+  const stdio = await import('@modelcontextprotocol/sdk/server/stdio.js');
+  const database = await import('./db/database.js');
+  const boardService = await import('./services/board.service.js');
 
-  const DB_PATH = process.env['AGENTBOARD_DB'] || 'agentboard.db';
-  const AGENT_NAME = process.env['AGENTBOARD_AGENT'] || 'mcp-agent';
+  // Empty env values fall back to the defaults, like unset ones.
+  const envDbPath = process.env['AGENTBOARD_DB'];
+  const envAgentName = process.env['AGENTBOARD_AGENT'];
+  const DB_PATH = envDbPath !== undefined && envDbPath !== '' ? envDbPath : 'agentboard.db';
+  const AGENT_NAME = envAgentName !== undefined && envAgentName !== '' ? envAgentName : 'mcp-agent';
 
-  const db = new AgentboardDB(DB_PATH);
-  const svc = new BoardService(db);
+  const db = new database.AgentboardDB(DB_PATH);
+  const svc = new boardService.BoardService(db);
   const aid = getOrCreateMcpAgent(svc, AGENT_NAME);
 
   const mcp = new McpServer({ name: 'agentboard', version: '1.0.0' }, { instructions: MCP_INSTRUCTIONS });
   registerMcpTools(mcp, svc, aid, AGENT_NAME);
 
-  const transport = new StdioServerTransport();
+  const transport = new stdio.StdioServerTransport();
   await mcp.connect(transport);
 }
 /* v8 ignore stop */

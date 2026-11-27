@@ -1,15 +1,16 @@
 import { beforeEach, afterEach, describe, it, expect } from 'vitest';
 import request from 'supertest';
 import express from 'express';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { AgentboardDB } from '../../src/db/database.js';
 import { BoardService } from '../../src/services/board.service.js';
 import { createProcessDiagramRoutes } from '../../src/api/routes/process-diagrams.js';
 import { validateDiagram } from '../../src/services/process-diagrams.js';
+import type { ProcessDiagramInput } from '../../src/services/process-diagrams.js';
 import { MCP_INSTRUCTIONS, registerMcpTools } from '../../src/mcp-server.js';
 
 // "Create folder": user → app → server, with an error path (#be30299e)
-const createFolder = () => ({
+const createFolder = (): ProcessDiagramInput => ({
   lanes: [{ id: 'user', name: 'User' }, { id: 'app', name: 'App' }, { id: 'server', name: 'Server' }],
   nodes: [
     { id: 'start', type: 'start', label: 'Tap “Create”', lane: 'user' },
@@ -75,17 +76,17 @@ describe('process diagrams (simplified BPMN)', () => {
 
   it('refuses diagrams the board could not draw truthfully', () => {
     const cases: [string, (d: ReturnType<typeof createFolder>) => void][] = [
-      ['start event', (d) => { d.nodes = d.nodes.filter((n) => n.type !== 'start'); d.flows = d.flows.slice(1); }],
-      ['end event', (d) => { d.nodes = d.nodes.filter((n) => n.type !== 'end'); d.flows = d.flows.slice(0, 3); }],
-      ['unknown lane', (d) => { d.nodes[1].lane = 'cloud'; }],
-      ['unknown node', (d) => { d.flows.push({ from: 'store', to: 'ghost' }); }],
-      ['Duplicate node', (d) => { d.nodes.push({ ...d.nodes[1] }); }],
-      ['Not reachable', (d) => { d.nodes.push({ id: 'island', type: 'task', label: 'Island', lane: 'app' }); d.flows.push({ from: 'island', to: 'done' }); }],
-      ['no outgoing flow', (d) => { d.flows = d.flows.filter((f) => f.from !== 'encrypt'); d.flows.push({ from: 'start', to: 'store' }); }],
-      ['at least two', (d) => { d.flows = d.flows.filter((f) => f.to !== 'error'); d.nodes = d.nodes.filter((n) => n.id !== 'error'); }],
-      ['incoming', (d) => { d.flows.push({ from: 'store', to: 'start' }); }],
-      ['must be one of', (d) => { (d.nodes[1] as { type: string }).type = 'subprocess'; }],
-      ['must match', (d) => { d.nodes[1].id = 'bad id<script>'; }],
+      ['start event', (d): void => { d.nodes = d.nodes.filter((n) => n.type !== 'start'); d.flows = d.flows.slice(1); }],
+      ['end event', (d): void => { d.nodes = d.nodes.filter((n) => n.type !== 'end'); d.flows = d.flows.slice(0, 3); }],
+      ['unknown lane', (d): void => { d.nodes[1].lane = 'cloud'; }],
+      ['unknown node', (d): void => { d.flows.push({ from: 'store', to: 'ghost' }); }],
+      ['Duplicate node', (d): void => { d.nodes.push({ ...d.nodes[1] }); }],
+      ['Not reachable', (d): void => { d.nodes.push({ id: 'island', type: 'task', label: 'Island', lane: 'app' }); d.flows.push({ from: 'island', to: 'done' }); }],
+      ['no outgoing flow', (d): void => { d.flows = d.flows.filter((f) => f.from !== 'encrypt'); d.flows.push({ from: 'start', to: 'store' }); }],
+      ['at least two', (d): void => { d.flows = d.flows.filter((f) => f.to !== 'error'); d.nodes = d.nodes.filter((n) => n.id !== 'error'); }],
+      ['incoming', (d): void => { d.flows.push({ from: 'store', to: 'start' }); }],
+      ['must be one of', (d): void => { (d.nodes[1] as { type: string }).type = 'subprocess'; }],
+      ['must match', (d): void => { d.nodes[1].id = 'bad id<script>'; }],
     ];
     for (const [message, mutate] of cases) {
       const d = createFolder();

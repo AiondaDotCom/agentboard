@@ -22,6 +22,7 @@ import type {
   Ticket,
   Comment,
   Activity,
+  ActivityAction,
   AuditEntry,
   TicketRevision,
   Column,
@@ -36,8 +37,20 @@ import type {
   TicketSearchResult,
 } from '../types.js';
 import { NotFoundError, ValidationError, DuplicateError, ConflictError } from './errors.js';
+import { isNonEmpty } from '../strings.js';
 
 const MAX_COLUMNS = 20;
+
+/**
+ * Ids of a project's first (inbox) and last (done) column. Projects always
+ * have at least two columns (validated on create/update, DEFAULT_COLUMNS when
+ * unset), which the tuple assertions encode in this one place.
+ */
+function columnBounds(project: Project): { first: Column; last: Column } {
+  const [first] = project.columns as [ColumnDef];
+  const [last] = project.columns.slice(-1) as [ColumnDef];
+  return { first: first.id, last: last.id };
+}
 const RUNTIME_HOST_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 /** Validates an optional runtime counter, defaulting an absent one to 0. */
@@ -71,7 +84,7 @@ export class BoardService {
       projectName: owner?.name ?? '',
       ticketId: ticket?.id ?? null,
       ticketTitle: ticket?.title ?? '',
-      actorName: actorId ? this.db.getAgentById(actorId)?.name ?? '' : '',
+      actorName: isNonEmpty(actorId) ? this.db.getAgentById(actorId)?.name ?? '' : '',
       detail: detail ?? (ticket ? owner?.columns.find(column => column.id === ticket.column)?.title ?? ticket.column : ''),
     });
     pubsub.publish(EVENTS.BOARD_EVENT_ADDED, { boardEventAdded: event });
@@ -201,7 +214,7 @@ export class BoardService {
 
   getAllAgents(actorId?: string | null): AgentPublic[] {
     const agents = this.db.getAllAgents();
-    if (actorId) this.audit(actorId, 'LIST', 'agents', `${agents.length} agents`);
+    if (isNonEmpty(actorId)) this.audit(actorId, 'LIST', 'agents', `${agents.length} agents`);
     return agents;
   }
 
@@ -305,14 +318,14 @@ export class BoardService {
 
   getAllProjects(actorId?: string | null): Project[] {
     const projects = this.db.getAllProjects();
-    if (actorId) this.audit(actorId, 'LIST', 'projects', `${projects.length} projects`);
+    if (isNonEmpty(actorId)) this.audit(actorId, 'LIST', 'projects', `${projects.length} projects`);
     return projects;
   }
 
   getProject(id: string, actorId?: string | null): Project {
     const project = this.db.getProject(id);
     if (!project) throw new NotFoundError('Project not found');
-    if (actorId) {
+    if (isNonEmpty(actorId)) {
       this.audit(actorId, 'READ', `project '${project.name}'`);
       this.logAndPublishActivity(actorId, id, null, 'project_read', `Read project '${project.name}'`);
     }
@@ -350,7 +363,7 @@ export class BoardService {
       throw new ValidationError('Missing or invalid "title" field');
     }
 
-    const col = column ?? project.columns[0]!.id;
+    const col = column ?? columnBounds(project).first;
     this.requireValidColumn(project, col);
 
     if (group !== undefined && group !== null && typeof group !== 'string') {
@@ -411,7 +424,7 @@ export class BoardService {
   getTicket(projectId: string, ticketId: string, viewerAgentId?: string | null): Ticket {
     const ticket = this.db.getTicket(projectId, ticketId);
     if (!ticket) throw new NotFoundError('Ticket not found');
-    if (viewerAgentId) {
+    if (isNonEmpty(viewerAgentId)) {
       this.notifyTicketAccess(projectId, ticket.id, viewerAgentId, 'read');
       this.audit(viewerAgentId, 'READ', `ticket '${ticket.title}'`, `in project ${projectId}`);
       this.logAndPublishActivity(viewerAgentId, projectId, ticket.id, 'ticket_read', `Read ticket "${ticket.title}"`);
@@ -437,20 +450,20 @@ export class BoardService {
 
   getTicketsByProject(projectId: string, actorId?: string | null, options?: TicketListOptions): PaginatedResult<Ticket> {
     const project = this.requireProject(projectId);
-    if (options?.column) {
+    if (isNonEmpty(options?.column)) {
       this.requireValidColumn(project, options.column);
     }
     if (options?.work_type !== undefined) {
       this.validateWorkTypeFilter(options.work_type);
     }
     const result = this.db.getTicketsByProject(projectId, options);
-    if (actorId) {
+    if (isNonEmpty(actorId)) {
       for (const ticket of result.data) {
         this.notifyTicketAccess(projectId, ticket.id, actorId, 'list');
       }
       const project = this.db.getProject(projectId);
       const filters = [
-        options?.column ? `column=${options.column}` : '',
+        isNonEmpty(options?.column) ? `column=${options.column}` : '',
         options?.work_type ? `work_type=${options.work_type}` : '',
       ].filter(Boolean);
       const filterInfo = filters.length > 0 ? ` (${filters.join(', ')})` : '';
@@ -509,7 +522,7 @@ export class BoardService {
     if (typeof updates.column === 'string') cleanUpdates.column = updates.column;
     if ('blockedReason' in updates) {
       const r = typeof updates.blockedReason === 'string' ? updates.blockedReason.trim() : null;
-      cleanUpdates.blockedReason = r && r.length > 0 ? r : null;
+      cleanUpdates.blockedReason = r !== null && r.length > 0 ? r : null;
     }
     if (updates.dependsOn !== undefined) {
       const deps = this.resolveDependencies(projectId, resolved.id, updates.dependsOn);
@@ -532,13 +545,13 @@ export class BoardService {
 
     if ('group' in updates) {
       const g = typeof updates.group === 'string' ? updates.group.trim() : null;
-      cleanUpdates.group = g && g.length > 0 ? g : null;
+      cleanUpdates.group = g !== null && g.length > 0 ? g : null;
 
       // Moving a ticket into a group that is claimed by another agent is only
       // allowed if the ticket is unassigned or assigned to that same agent.
-      if (cleanUpdates.group && cleanUpdates.group !== resolved.group) {
+      if (isNonEmpty(cleanUpdates.group) && cleanUpdates.group !== resolved.group) {
         const claimer = this.findGroupClaimer(projectId, cleanUpdates.group, resolved.id);
-        if (claimer && resolved.assigneeId && resolved.assigneeId !== claimer.id) {
+        if (claimer && isNonEmpty(resolved.assigneeId) && resolved.assigneeId !== claimer.id) {
           throw new ConflictError(
             `Group "${cleanUpdates.group}" is claimed by agent "${claimer.name}" – ticket is assigned to a different agent`,
           );
@@ -623,7 +636,7 @@ export class BoardService {
       throw new ValidationError(`Ticket is already in project "${source.name}"`);
     }
 
-    const targetColumn = column ?? target.columns[0]!.id;
+    const targetColumn = column ?? columnBounds(target).first;
     this.requireValidColumn(target, targetColumn);
 
     // Dependencies only ever point inside one project: tickets that depend on
@@ -638,9 +651,9 @@ export class BoardService {
 
     // Group claims are per project – moving into a group claimed by someone
     // else is only allowed while the ticket is unassigned.
-    if (resolved.group) {
+    if (isNonEmpty(resolved.group)) {
       const claimer = this.findGroupClaimer(target.id, resolved.group, resolved.id);
-      if (claimer && resolved.assigneeId && resolved.assigneeId !== claimer.id) {
+      if (claimer && isNonEmpty(resolved.assigneeId) && resolved.assigneeId !== claimer.id) {
         throw new ConflictError(
           `Group "${resolved.group}" is claimed by agent "${claimer.name}" in project "${target.name}" – ticket is assigned to a different agent`,
         );
@@ -702,7 +715,7 @@ export class BoardService {
     // Group claim rule: assigning any ticket of a group claims the whole group.
     // A group counts as claimed while any of its tickets (outside "done") has
     // an assignee. Only that agent may take further tickets of the group.
-    if (resolved.group) {
+    if (isNonEmpty(resolved.group)) {
       const claimer = this.findGroupClaimer(projectId, resolved.group, resolved.id);
       if (claimer && claimer.id !== assigneeId) {
         throw new ConflictError(
@@ -717,7 +730,7 @@ export class BoardService {
     this.logAndPublishActivity(
       actorId ?? null, projectId, ticket.id,
       'ticket_assigned',
-      ticket.group ? `Assigned to ${assignee.name} (claims group "${ticket.group}")` : `Assigned to ${assignee.name}`,
+      isNonEmpty(ticket.group) ? `Assigned to ${assignee.name} (claims group "${ticket.group}")` : `Assigned to ${assignee.name}`,
     );
 
     pubsub.publish(EVENTS.TICKET_UPDATED, {
@@ -760,7 +773,7 @@ export class BoardService {
   closeTicket(projectId: string, ticketId: string): Ticket {
     const project = this.requireProject(projectId);
     const resolved = this.requireTicket(projectId, ticketId);
-    const doneColumn = project.columns[project.columns.length - 1]!.id;
+    const doneColumn = columnBounds(project).last;
 
     if (doneColumn !== resolved.column) {
       this.assertDependenciesAllowColumn(project, resolved.dependsOn, doneColumn, resolved.title);
@@ -783,7 +796,7 @@ export class BoardService {
   openTicket(projectId: string, ticketId: string): Ticket {
     const project = this.requireProject(projectId);
     const resolved = this.requireTicket(projectId, ticketId);
-    const firstColumn = project.columns[0]!.id;
+    const firstColumn = columnBounds(project).first;
 
     const ticket = this.db.moveTicket(projectId, resolved.id, firstColumn, null);
     if (!ticket) throw new NotFoundError('Ticket not found');
@@ -842,7 +855,7 @@ export class BoardService {
 
   getCommentsByTicket(projectId: string, ticketId: string, viewerAgentId?: string | null): Comment[] {
     const resolved = this.requireTicket(projectId, ticketId);
-    if (viewerAgentId) {
+    if (isNonEmpty(viewerAgentId)) {
       this.notifyTicketAccess(projectId, resolved.id, viewerAgentId, 'read');
       this.audit(viewerAgentId, 'READ', `comments on ticket '${resolved.id}'`);
       this.logAndPublishActivity(viewerAgentId, projectId, resolved.id, 'comments_read', 'Read comments');
@@ -856,7 +869,7 @@ export class BoardService {
 
   getRevisionsByTicket(projectId: string, ticketId: string, viewerAgentId?: string | null): TicketRevision[] {
     const resolved = this.requireTicket(projectId, ticketId);
-    if (viewerAgentId) {
+    if (isNonEmpty(viewerAgentId)) {
       this.notifyTicketAccess(projectId, resolved.id, viewerAgentId, 'read');
       this.audit(viewerAgentId, 'READ', `history of ticket '${resolved.id}'`);
       this.logAndPublishActivity(viewerAgentId, projectId, resolved.id, 'history_read', 'Read ticket history');
@@ -941,9 +954,12 @@ export class BoardService {
 
   /** Routes one batch operation to the matching service method (snake_case args, like MCP/REST). */
   private dispatchBatchOp(op: BatchOp, args: Record<string, unknown>, actorId: string | null): unknown {
+    // Ids arrive as untyped JSON; anything non-string is stringified as-is and
+    // then simply fails the lookup.
+    // eslint-disable-next-line @typescript-eslint/no-base-to-string
     const str = (key: string): string => String(args[key] ?? '');
     const optStr = (key: string): string | undefined =>
-      typeof args[key] === 'string' ? (args[key] as string) : undefined;
+      typeof args[key] === 'string' ? args[key] : undefined;
 
     switch (op) {
       case 'list_projects':
@@ -1055,7 +1071,7 @@ export class BoardService {
     agentId: string | null,
     projectId: string,
     ticketId: string | null,
-    action: import('../types.js').ActivityAction,
+    action: ActivityAction,
     details: string,
   ): void {
     const activity = this.db.logActivity(agentId, ticketId, action, details, projectId);
@@ -1115,12 +1131,12 @@ export class BoardService {
     excludeTicketId?: string,
   ): AgentPublic | null {
     const project = this.db.getProject(projectId);
-    const doneColumn = project ? project.columns[project.columns.length - 1]!.id : 'done';
+    const doneColumn = project ? columnBounds(project).last : 'done';
     const groupTickets = this.db.getTicketsByGroup(projectId, group);
     for (const t of groupTickets) {
       if (t.id === excludeTicketId) continue;
       if (t.column === doneColumn) continue;
-      if (t.assigneeId) {
+      if (isNonEmpty(t.assigneeId)) {
         return this.db.getAgentById(t.assigneeId) ?? null;
       }
     }
@@ -1150,6 +1166,8 @@ export class BoardService {
     if (typeof value === 'string' && value.trim().length === 0) return null;
     if (typeof value !== 'string' || !(WORK_TYPES as readonly string[]).includes(value)) {
       throw new ValidationError(
+        // Echo whatever invalid value was sent (may be any JSON value).
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string
         `Invalid "work_type" value "${String(value)}". Valid work types: ${WORK_TYPES.join(', ')} (or empty to clear)`,
       );
     }
@@ -1171,7 +1189,7 @@ export class BoardService {
     if (typeof columnId !== 'string' || !project.columns.some((c) => c.id === columnId)) {
       const valid = project.columns.map((c) => c.id).join(', ');
       throw new ValidationError(
-        `Invalid column "${String(columnId)}" for project "${project.name}". Valid columns: ${valid}`,
+        `Invalid column "${columnId}" for project "${project.name}". Valid columns: ${valid}`,
       );
     }
   }
@@ -1225,7 +1243,7 @@ export class BoardService {
       if (!dep) {
         throw new NotFoundError(`Dependency ticket "${entry}" not found in this project`);
       }
-      if (ticketId && dep.id === ticketId) {
+      if (isNonEmpty(ticketId) && dep.id === ticketId) {
         throw new ValidationError('A ticket cannot depend on itself');
       }
       if (!resolved.includes(dep.id)) resolved.push(dep.id);
@@ -1240,8 +1258,7 @@ export class BoardService {
   private assertNoDependencyCycle(projectId: string, ticketId: string, newDeps: string[]): void {
     const visited = new Set<string>();
     const stack = [...newDeps];
-    while (stack.length > 0) {
-      const currentId = stack.pop()!;
+    for (let currentId = stack.pop(); currentId !== undefined; currentId = stack.pop()) {
       if (currentId === ticketId) {
         throw new ValidationError('Dependency cycle detected – a ticket cannot (transitively) depend on itself');
       }
@@ -1264,8 +1281,7 @@ export class BoardService {
     ticketTitle: string,
   ): void {
     if (dependsOn.length === 0) return;
-    const firstColumn = project.columns[0]!.id;
-    const doneColumn = project.columns[project.columns.length - 1]!.id;
+    const { first: firstColumn, last: doneColumn } = columnBounds(project);
     if (targetColumn === firstColumn) return;
 
     const open = dependsOn

@@ -7,22 +7,22 @@ describe('GraphQL Schema', () => {
   });
 
   it('should include Query type', () => {
-    const source = (typeDefs as any).loc?.source?.body ?? '';
+    const source = (typeDefs as { loc?: { source?: { body?: string } } }).loc?.source?.body ?? '';
     expect(source).toContain('type Query');
   });
 
   it('should include Subscription type', () => {
-    const source = (typeDefs as any).loc?.source?.body ?? '';
+    const source = (typeDefs as { loc?: { source?: { body?: string } } }).loc?.source?.body ?? '';
     expect(source).toContain('type Subscription');
   });
 
   it('should include Project type', () => {
-    const source = (typeDefs as any).loc?.source?.body ?? '';
+    const source = (typeDefs as { loc?: { source?: { body?: string } } }).loc?.source?.body ?? '';
     expect(source).toContain('type Project');
   });
 
   it('should include Ticket type', () => {
-    const source = (typeDefs as any).loc?.source?.body ?? '';
+    const source = (typeDefs as { loc?: { source?: { body?: string } } }).loc?.source?.body ?? '';
     expect(source).toContain('type Ticket');
   });
 });

@@ -30,5 +30,7 @@ jobs:
       - run: npm ci
       - name: Native SQLite binding loads
         run: node -e "const D=require('better-sqlite3'); console.log(new D(':memory:').prepare('select sqlite_version() v').get())"
+      - run: npm run lint
       - run: npm run build
-      - run: npx vitest run
+      # 100% coverage thresholds live in vitest.config.ts
+      - run: npx vitest run --coverage

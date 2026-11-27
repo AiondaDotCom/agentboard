@@ -367,7 +367,7 @@ describe('Ticket work type – REST routes', () => {
 // MCP tools + batch
 // ---------------------------------------------------------------------------
 
-type ToolResult = { content: [{ type: 'text'; text: string }]; isError?: boolean };
+interface ToolResult { content: [{ type: 'text'; text: string }]; isError?: boolean }
 type ToolHandler = (args: Record<string, unknown>) => Promise<ToolResult>;
 
 describe('Ticket work type – MCP tools', () => {
@@ -396,6 +396,8 @@ describe('Ticket work type – MCP tools', () => {
     db.close();
   });
 
+  // Parsed JSON payload of arbitrary shape; tests assert on it dynamically.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function parse(result: ToolResult): any {
     expect(result.isError).toBeUndefined();
     return JSON.parse(result.content[0].text);

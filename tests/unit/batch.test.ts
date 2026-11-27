@@ -168,7 +168,7 @@ describe('Batch operations', () => {
     });
 
     it('falls back to a generic message for non-Error throws', () => {
-      vi.spyOn(service, 'getAllAgents').mockImplementation(() => { throw 'boom'; });
+      vi.spyOn(service, 'getAllAgents').mockImplementation(() => { throw 'boom'; }); // eslint-disable-line no-throw-literal -- non-Error throw on purpose
       const results = service.executeBatch([{ op: 'list_agents' }], agentId);
       expect(results[0]).toEqual({ op: 'list_agents', ok: false, error: 'Failed' });
       vi.restoreAllMocks();
@@ -246,7 +246,7 @@ describe('Batch operations', () => {
   // -------------------------------------------------------------------------
 
   describe('MCP batch tool', () => {
-    type ToolResult = { content: [{ type: 'text'; text: string }]; isError?: boolean };
+    interface ToolResult { content: [{ type: 'text'; text: string }]; isError?: boolean }
     type ToolHandler = (args: Record<string, unknown>) => Promise<ToolResult>;
     let tools: Map<string, ToolHandler>;
 

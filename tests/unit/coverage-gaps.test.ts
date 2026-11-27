@@ -44,7 +44,7 @@ describe('BoardService – remaining paths', () => {
 
   it('createAgent rethrows non-UNIQUE errors unchanged', () => {
     const original = db.createAgent.bind(db);
-    (db as unknown as { createAgent: () => never }).createAgent = () => { throw new Error('disk full'); };
+    (db as unknown as { createAgent: () => never }).createAgent = (): never => { throw new Error('disk full'); };
     expect(() => service.createAgent('x')).toThrow('disk full');
     (db as unknown as { createAgent: typeof original }).createAgent = original;
   });
@@ -183,7 +183,7 @@ describe('BoardService – remaining paths', () => {
 
   it('createAgent rethrows non-Error throwables', () => {
     const original = db.createAgent.bind(db);
-    (db as unknown as { createAgent: () => never }).createAgent = () => { throw 'boom'; }; // eslint-disable-line no-throw-literal
+    (db as unknown as { createAgent: () => never }).createAgent = (): never => { throw 'boom'; }; // eslint-disable-line no-throw-literal
     try {
       service.createAgent('x');
       expect.unreachable('should have thrown');
@@ -224,7 +224,7 @@ describe('BoardService – remaining paths', () => {
 
     const patch = (method: 'updateTicket' | 'moveTicket' | 'moveTicketToProject' | 'assignTicket', fn: () => void): void => {
       const original = db[method].bind(db);
-      (db as unknown as Record<string, unknown>)[method] = () => undefined;
+      (db as unknown as Record<string, unknown>)[method] = (): undefined => undefined;
       try {
         expect(fn).toThrow(NotFoundError);
       } finally {
@@ -246,7 +246,7 @@ describe('BoardService – remaining paths', () => {
   it('updateProject throws NotFoundError when the project vanishes mid-update', () => {
     const p = service.createProject('p');
     const original = db.updateProject.bind(db);
-    (db as unknown as { updateProject: () => undefined }).updateProject = () => undefined;
+    (db as unknown as { updateProject: () => undefined }).updateProject = (): undefined => undefined;
     try {
       expect(() => service.updateProject(p.id, { name: 'x' })).toThrow(NotFoundError);
     } finally {
@@ -262,7 +262,7 @@ describe('BoardService – remaining paths', () => {
     // First getProject call (requireProject) succeeds, second returns undefined
     const original = db.getProject.bind(db);
     let calls = 0;
-    (db as unknown as { getProject: (id: string) => unknown }).getProject = (id: string) => {
+    (db as unknown as { getProject: (id: string) => unknown }).getProject = (id: string): unknown => {
       calls += 1;
       return calls === 1 ? original(id) : undefined;
     };
@@ -284,7 +284,7 @@ describe('BoardService – remaining paths', () => {
     service.assignTicket(p.id, t1.id, agentA);
 
     const original = db.getAgentById.bind(db);
-    (db as unknown as { getAgentById: (id: string) => unknown }).getAgentById = (id: string) =>
+    (db as unknown as { getAgentById: (id: string) => unknown }).getAgentById = (id: string): unknown =>
       id === agentA ? undefined : original(id);
     try {
       // Claimer can no longer be resolved → group counts as free
@@ -302,7 +302,7 @@ describe('BoardService – remaining paths', () => {
     service.assignTicket(p.id, t1.id, agentA);
 
     const original = db.getProject.bind(db);
-    (db as unknown as { getProject: () => undefined }).getProject = () => undefined;
+    (db as unknown as { getProject: () => undefined }).getProject = (): undefined => undefined;
     try {
       // Re-assigning the same agent is allowed even with the fallback path
       expect(service.assignTicket(p.id, t1.id, agentA).assigneeId).toBe(agentA);
@@ -553,6 +553,8 @@ describe('PubSub – iterator edge cases', () => {
 
 describe('GraphQL resolvers – subscriptions and field resolvers', () => {
   let db: AgentboardDB;
+  // Resolver map is untyped (Record<string, unknown>); tests call into it freely.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let resolvers: any;
 
   beforeEach(() => {
@@ -575,7 +577,7 @@ describe('GraphQL resolvers – subscriptions and field resolvers', () => {
   });
 
   it('project-scoped subscriptions only deliver events of their project', async () => {
-    const events: Array<[string, string, string]> = [
+    const events: [string, string, string][] = [
       ['ticketCreated', EVENTS.TICKET_CREATED, 'ticketCreated'],
       ['ticketUpdated', EVENTS.TICKET_UPDATED, 'ticketUpdated'],
       ['ticketMoved', EVENTS.TICKET_MOVED, 'ticketMoved'],
@@ -825,9 +827,9 @@ describe('Routes – error branches', () => {
   });
 
   it('handleServiceError maps unknown errors to 500', () => {
-    const responses: Array<{ status: number; body: unknown }> = [];
+    const responses: { status: number; body: unknown }[] = [];
     const fakeRes = {
-      status(code: number) { return { json: (b: unknown) => responses.push({ status: code, body: b }) }; },
+      status(code: number): { json: (b: unknown) => number } { return { json: (b: unknown): number => responses.push({ status: code, body: b }) }; },
     } as unknown as Parameters<typeof handleServiceError>[0];
 
     handleServiceError(fakeRes, new Error('kaboom'));

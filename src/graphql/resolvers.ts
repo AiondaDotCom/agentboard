@@ -3,6 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import type { AgentboardDB } from '../db/database.js';
+import type { Ticket } from '../types.js';
 import { pubsub, EVENTS } from './pubsub.js';
 
 interface SubscriptionArgs {
@@ -18,7 +19,7 @@ export function createResolvers(db: AgentboardDB): Record<string, unknown> {
       agents: (): ReturnType<typeof db.getAllAgents> => db.getAllAgents(),
     },
     Project: {
-      tickets: (parent: { id: string }): import('../types.js').Ticket[] => db.getTicketsByProject(parent.id, { per_page: 10000 }).data,
+      tickets: (parent: { id: string }): Ticket[] => db.getTicketsByProject(parent.id, { per_page: 10000 }).data,
     },
     Ticket: {
       agent: (parent: { agentId: string | null }): ReturnType<typeof db.getAgentById> | null => {

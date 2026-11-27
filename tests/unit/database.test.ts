@@ -42,7 +42,7 @@ describe('AgentboardDB', () => {
       const found = db.getAgentById(created.id);
       expect(found).toBeDefined();
       expect(found!.name).toBe('bot1');
-      expect((found as any).apiKey).toBeUndefined();
+      expect((found as Record<string, unknown>).apiKey).toBeUndefined();
     });
 
     it('should return undefined for invalid ID', () => {
@@ -55,7 +55,7 @@ describe('AgentboardDB', () => {
       const all = db.getAllAgents();
       expect(all).toHaveLength(2);
       expect(all[0]!.name).toBe('bot1');
-      all.forEach(a => expect((a as any).apiKey).toBeUndefined());
+      all.forEach(a => expect((a as Record<string, unknown>).apiKey).toBeUndefined());
     });
   });
 

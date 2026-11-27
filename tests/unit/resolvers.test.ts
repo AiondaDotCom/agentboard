@@ -4,6 +4,8 @@ import { createResolvers } from '../../src/graphql/resolvers.js';
 
 describe('GraphQL Resolvers', () => {
   let db: AgentboardDB;
+  // Resolver map is untyped (Record<string, unknown>); tests call into it freely.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let resolvers: Record<string, any>;
 
   beforeEach(() => {

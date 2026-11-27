@@ -63,7 +63,8 @@ interface TicketRow {
   work_type: string | null;
   agent_id: string | null;
   assignee_id: string | null;
-  comment_count: number;
+  /** COUNT(*) in TICKET_SELECT; nullable for defensive mapping (defaults to 0). */
+  comment_count: number | null;
   depends_on: string | null;
   created_at: string;
   updated_at: string;
@@ -217,7 +218,7 @@ export class AgentboardDB {
     const hasTickets = this.db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tickets'")
       .get();
-    if (hasTickets) {
+    if (hasTickets !== undefined) {
       const columns = this.db.prepare('PRAGMA table_info(tickets)').all() as { name: string }[];
       if (!columns.some((c) => c.name === 'group_name')) {
         this.db.exec('ALTER TABLE tickets ADD COLUMN group_name TEXT');
@@ -237,7 +238,7 @@ export class AgentboardDB {
     const hasProjects = this.db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'projects'")
       .get();
-    if (hasProjects) {
+    if (hasProjects !== undefined) {
       const columns = this.db.prepare('PRAGMA table_info(projects)').all() as { name: string }[];
       if (!columns.some((c) => c.name === 'columns')) {
         this.db.exec('ALTER TABLE projects ADD COLUMN columns TEXT');
@@ -252,7 +253,7 @@ export class AgentboardDB {
     const hasRuntimeReports = this.db
       .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'runtime_reports'")
       .get();
-    if (hasRuntimeReports) {
+    if (hasRuntimeReports !== undefined) {
       const columns = this.db.prepare('PRAGMA table_info(runtime_reports)').all() as { name: string }[];
       const counters = ['working_opencode', 'idle_opencode', 'working_cursor', 'idle_cursor'];
       for (const counter of counters) {
@@ -291,7 +292,7 @@ export class AgentboardDB {
 
   private mapProjectRow(row: ProjectRow): Project {
     let columns: ColumnDef[] = DEFAULT_COLUMNS;
-    if (row.columns) {
+    if (row.columns !== null && row.columns !== '') {
       try {
         const parsed = JSON.parse(row.columns) as ColumnDef[];
         if (Array.isArray(parsed) && parsed.length > 0) columns = parsed;
@@ -314,13 +315,13 @@ export class AgentboardDB {
       projectId: row.project_id,
       title: row.title,
       description: row.description,
-      column: row.column_name as Column,
+      column: row.column_name,
       position: row.position,
       group: row.group_name ?? null,
       blockedReason: row.blocked_reason ?? null,
       priority: row.priority as Priority,
       workType: (row.work_type ?? null) as WorkType | null,
-      dependsOn: row.depends_on ? row.depends_on.split(',') : [],
+      dependsOn: row.depends_on !== null && row.depends_on !== '' ? row.depends_on.split(',') : [],
       agentId: row.agent_id,
       assigneeId: row.assignee_id ?? null,
       commentCount: row.comment_count ?? 0,
@@ -703,7 +704,7 @@ export class AgentboardDB {
     const whereClauses = ['t.project_id = ?'];
     const params: (string | number)[] = [projectId];
 
-    if (column) {
+    if (column !== undefined && column !== '') {
       whereClauses.push('t.column_name = ?');
       params.push(column);
     }
@@ -1038,7 +1039,7 @@ export class AgentboardDB {
     return this.mapAuditRow(row);
   }
 
-  getAllAuditEntries(limit: number = 100): AuditEntry[] {
+  getAllAuditEntries(limit = 100): AuditEntry[] {
     const rows = this.db
       .prepare('SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT ?')
       .all(limit) as AuditRow[];
@@ -1046,7 +1047,7 @@ export class AgentboardDB {
     return rows.map((r) => this.mapAuditRow(r));
   }
 
-  getAuditEntriesByAgent(agentId: string, limit: number = 100): AuditEntry[] {
+  getAuditEntriesByAgent(agentId: string, limit = 100): AuditEntry[] {
     const rows = this.db
       .prepare('SELECT * FROM audit_log WHERE agent_id = ? ORDER BY timestamp DESC LIMIT ?')
       .all(agentId, limit) as AuditRow[];
@@ -1100,7 +1101,7 @@ export class AgentboardDB {
 
   hasSession(token: string): boolean {
     const row = this.db.prepare('SELECT 1 FROM sessions WHERE token = ?').get(token);
-    return !!row;
+    return row !== undefined;
   }
 
   deleteSession(token: string): void {
@@ -1136,7 +1137,7 @@ export class AgentboardDB {
       .run(sessionId);
   }
 
-  pruneOldMcpSessions(maxAgeDays: number = 30): number {
+  pruneOldMcpSessions(maxAgeDays = 30): number {
     const result = this.db
       .prepare("DELETE FROM mcp_sessions WHERE last_used_at < datetime('now', ?)")
       .run(`-${maxAgeDays} days`);

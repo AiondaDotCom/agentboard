@@ -5,6 +5,7 @@ import path from 'node:path';
 import express from 'express';
 import cors from 'cors';
 import { ApolloServer } from '@apollo/server';
+import type { GraphQLServerListener } from '@apollo/server';
 import { expressMiddleware } from '@apollo/server/express4';
 import { useServer } from 'graphql-ws/lib/use/ws';
 import { WebSocketServer } from 'ws';
@@ -12,6 +13,7 @@ import { makeExecutableSchema } from '@graphql-tools/schema';
 import type { IResolvers } from '@graphql-tools/utils';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import type { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 
 import { AgentboardDB } from './db/database.js';
@@ -38,20 +40,32 @@ const SERVER_CONFIG = loadServerConfig();
 // ---------------------------------------------------------------------------
 const TEN_YEARS = 10 * 365 * 24 * 3600;
 
+/** True for a defined, non-empty string (the old truthiness check on `string | undefined`). */
+function isNonEmpty(value: string | undefined): value is string {
+  return value !== undefined && value !== '';
+}
+
 function parseCookies(header: string | undefined): Record<string, string> {
-  if (!header) return {};
+  if (!isNonEmpty(header)) return {};
   return Object.fromEntries(
-    header.split(';').map((c) => {
-      const [key, ...rest] = c.trim().split('=');
+    header.split(';').map((c): [string, string] => {
+      // split() always yields at least one element, so the default never applies
+      const [key = '', ...rest] = c.trim().split('=');
       return [key, rest.join('=')];
     }),
   );
 }
 
+/** JSON-RPC request id from an (untyped) parsed request body, if any. */
+function jsonRpcId(body: unknown): unknown {
+  return (body as { id?: unknown } | null | undefined)?.id;
+}
+
 // ---------------------------------------------------------------------------
 // Database + Service layer
 // ---------------------------------------------------------------------------
-const DB_PATH = process.env['DB_PATH'] || 'agentboard.db';
+const envDbPath = process.env['DB_PATH'];
+const DB_PATH = isNonEmpty(envDbPath) ? envDbPath : 'agentboard.db';
 const db = new AgentboardDB(DB_PATH);
 const service = new BoardService(db);
 
@@ -60,12 +74,12 @@ db.pruneOldMcpSessions(30);
 
 // Admin key: stored in SQLite (generated once, persisted forever).
 const envKey = process.env['ADMIN_API_KEY'];
-if (envKey) {
+if (isNonEmpty(envKey)) {
   db.setSetting('admin_api_key', envKey);
 }
 const ADMIN_API_KEY = service.getOrCreateAdminKey();
 const envRuntimeKey = process.env['RUNTIME_API_KEY'];
-if (envRuntimeKey) db.setSetting('runtime_api_key', envRuntimeKey);
+if (isNonEmpty(envRuntimeKey)) db.setSetting('runtime_api_key', envRuntimeKey);
 
 // ---------------------------------------------------------------------------
 // Express
@@ -78,7 +92,7 @@ app.use(express.json({ limit: '12mb' }));
 // Auth routes (public – no session required)
 // ---------------------------------------------------------------------------
 app.post('/api/auth/login', (req, res): void => {
-  const { key } = req.body ?? {};
+  const key = (req.body as { key?: unknown } | null | undefined)?.key;
   if (typeof key === 'string' && key === ADMIN_API_KEY) {
     const token = randomUUID();
     db.createSession(token);
@@ -92,7 +106,7 @@ app.post('/api/auth/login', (req, res): void => {
 app.post('/api/auth/logout', (req, res): void => {
   const cookies = parseCookies(req.headers.cookie);
   const token = cookies['agentboard_session'];
-  if (token) db.deleteSession(token);
+  if (isNonEmpty(token)) db.deleteSession(token);
   res.setHeader('Set-Cookie', 'agentboard_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');
   res.json({ ok: true });
 });
@@ -100,7 +114,7 @@ app.post('/api/auth/logout', (req, res): void => {
 app.get('/api/auth/status', (req, res): void => {
   const cookies = parseCookies(req.headers.cookie);
   const token = cookies['agentboard_session'];
-  res.json({ authenticated: !!(token && db.hasSession(token)) });
+  res.json({ authenticated: isNonEmpty(token) && db.hasSession(token) });
 });
 
 // High-frequency telemetry is deliberately outside the audit middleware so
@@ -125,7 +139,7 @@ app.use('/api/search', createSearchRoutes(service));
 app.get('/api/agents/keys', (req, res): void => {
   const cookies = parseCookies(req.headers.cookie);
   const token = cookies['agentboard_session'];
-  if (!token || !db.hasSession(token)) {
+  if (!isNonEmpty(token) || !db.hasSession(token)) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
   }
@@ -136,7 +150,7 @@ app.get('/api/agents/keys', (req, res): void => {
 // Activity log route
 app.get('/api/projects/:id/activity', (req, res): void => {
   try {
-    const projectId = String(req.params['id'] ?? '');
+    const projectId = req.params.id;
     const activities = service.getActivitiesByProject(projectId);
     res.json(activities);
   } catch {
@@ -156,7 +170,7 @@ interface McpSession {
   transport: StreamableHTTPServerTransport;
   agentId: string;
 }
-const mcpSessions: Record<string, McpSession> = {};
+const mcpSessions = new Map<string, McpSession>();
 
 /** Validate X-Api-Key header and return the agent, or send 401/403. */
 function authenticateMcpRequest(
@@ -164,7 +178,7 @@ function authenticateMcpRequest(
   res: express.Response,
 ): { id: string; name: string } | null {
   const apiKey = req.headers['x-api-key'] as string | undefined;
-  if (!apiKey) {
+  if (!isNonEmpty(apiKey)) {
     res.status(401).json({
       jsonrpc: '2.0',
       error: {
@@ -201,17 +215,17 @@ async function createMcpTransport(
   reuseSessionId?: string,
 ): Promise<StreamableHTTPServerTransport> {
   const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: reuseSessionId ? () => reuseSessionId : () => randomUUID(),
-    onsessioninitialized: (sid: string) => {
-      mcpSessions[sid] = { transport, agentId };
+    sessionIdGenerator: isNonEmpty(reuseSessionId) ? (): string => reuseSessionId : (): string => randomUUID(),
+    onsessioninitialized: (sid: string): void => {
+      mcpSessions.set(sid, { transport, agentId });
       db.createMcpSession(sid, agentId);
     },
   });
 
-  transport.onclose = () => {
+  transport.onclose = (): void => {
     const sid = transport.sessionId;
-    if (sid) {
-      delete mcpSessions[sid];
+    if (isNonEmpty(sid)) {
+      mcpSessions.delete(sid);
       db.deleteMcpSession(sid);
     }
   };
@@ -252,9 +266,8 @@ async function autoRecoverMcpSession(
 
   const transport = await createMcpTransport(agentId, agentName, sessionId);
 
-  // Access the internal web standard transport directly
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const webTransport = (transport as any)._webStandardTransport;
+  // Access the internal (private) web standard transport directly
+  const webTransport = (transport as unknown as { _webStandardTransport: WebStandardStreamableHTTPServerTransport })._webStandardTransport;
 
   // Step 1: Synthetic initialize request using Web Standard Request
   const initBody = {
@@ -274,11 +287,12 @@ async function autoRecoverMcpSession(
     body: JSON.stringify(initBody),
   });
 
-  const initResponse: Response = await webTransport.handleRequest(initRequest, { parsedBody: initBody });
+  const initResponse = await webTransport.handleRequest(initRequest, { parsedBody: initBody });
   // Drain the SSE response stream to ensure the handshake completes
   if (initResponse.body) {
     const reader = initResponse.body.getReader();
-    while (true) { const { done } = await reader.read(); if (done) break; }
+    let done = false;
+    while (!done) ({ done } = await reader.read());
   }
 
   // Step 2: Initialized notification to complete protocol handshake
@@ -306,7 +320,7 @@ app.post('/mcp', async (req, res) => {
     mcpError(res, 406, -32000,
       'Missing required Accept header. Your HTTP request must include the header: Accept: application/json, text/event-stream — This is required by the MCP StreamableHTTP transport. Most MCP client libraries set this automatically. If you are using curl or a raw HTTP client, add: -H "Accept: application/json, text/event-stream"',
       { recovery: 'add_accept_header', required_header: 'Accept: application/json, text/event-stream' },
-      req.body?.id);
+      jsonRpcId(req.body));
     return;
   }
 
@@ -315,17 +329,18 @@ app.post('/mcp', async (req, res) => {
 
 
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
-  const reqId = req.body?.id;
+  const reqId = jsonRpcId(req.body);
 
   try {
     // Case 1: Active in-memory session
-    if (sessionId && mcpSessions[sessionId]) {
-      if (mcpSessions[sessionId].agentId !== agent.id) {
+    const session = isNonEmpty(sessionId) ? mcpSessions.get(sessionId) : undefined;
+    if (isNonEmpty(sessionId) && session !== undefined) {
+      if (session.agentId !== agent.id) {
         mcpError(res, 403, -32002, 'Session belongs to a different agent. Use the X-Api-Key that created this session, or send a new "initialize" request to start a fresh session.', { recovery: 'send_initialize', reason: 'wrong_agent' }, reqId);
         return;
       }
       db.touchMcpSession(sessionId);
-      await mcpSessions[sessionId].transport.handleRequest(req, res, req.body);
+      await session.transport.handleRequest(req, res, req.body);
       return;
     }
 
@@ -337,9 +352,9 @@ app.post('/mcp', async (req, res) => {
     }
 
     // Case 3: Stale/unknown session ID → auto-recover transparently
-    if (sessionId) {
+    if (isNonEmpty(sessionId)) {
       const persistedAgentId = db.getMcpSessionAgentId(sessionId);
-      if (persistedAgentId && persistedAgentId !== agent.id) {
+      if (isNonEmpty(persistedAgentId) && persistedAgentId !== agent.id) {
         mcpError(res, 403, -32002, 'Session belongs to a different agent.', { recovery: 'send_initialize', reason: 'wrong_agent' }, reqId);
         return;
       }
@@ -369,20 +384,21 @@ app.get('/mcp', async (req, res) => {
 
 
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
-  if (!sessionId || !mcpSessions[sessionId]) {
-    const reason = sessionId
-      ? (db.getMcpSessionAgentId(sessionId) ? 'server_restart' : 'unknown_session')
+  const session = isNonEmpty(sessionId) ? mcpSessions.get(sessionId) : undefined;
+  if (!isNonEmpty(sessionId) || session === undefined) {
+    const reason = isNonEmpty(sessionId)
+      ? (isNonEmpty(db.getMcpSessionAgentId(sessionId)) ? 'server_restart' : 'unknown_session')
       : 'no_session';
     mcpError(res, 400, -32000,
       'Invalid or missing MCP session ID. Action required: Send a new "initialize" request to POST /mcp with your X-Api-Key header first.',
       { recovery: 'send_initialize', reason });
     return;
   }
-  if (mcpSessions[sessionId].agentId !== agent.id) {
+  if (session.agentId !== agent.id) {
     mcpError(res, 403, -32002, 'Session belongs to a different agent.', { recovery: 'send_initialize', reason: 'wrong_agent' });
     return;
   }
-  await mcpSessions[sessionId].transport.handleRequest(req, res);
+  await session.transport.handleRequest(req, res);
 });
 
 // DELETE /mcp – session termination
@@ -392,17 +408,18 @@ app.delete('/mcp', async (req, res) => {
 
 
   const sessionId = req.headers['mcp-session-id'] as string | undefined;
-  if (!sessionId || !mcpSessions[sessionId]) {
-    if (sessionId) db.deleteMcpSession(sessionId);
+  const session = isNonEmpty(sessionId) ? mcpSessions.get(sessionId) : undefined;
+  if (!isNonEmpty(sessionId) || session === undefined) {
+    if (isNonEmpty(sessionId)) db.deleteMcpSession(sessionId);
     mcpError(res, 400, -32000, 'Invalid or missing session ID.', { recovery: 'send_initialize' });
     return;
   }
-  if (mcpSessions[sessionId].agentId !== agent.id) {
+  if (session.agentId !== agent.id) {
     mcpError(res, 403, -32002, 'Session belongs to a different agent.', { recovery: 'send_initialize', reason: 'wrong_agent' });
     return;
   }
   db.deleteMcpSession(sessionId);
-  await mcpSessions[sessionId].transport.handleRequest(req, res);
+  await session.transport.handleRequest(req, res);
 });
 
 // ---------------------------------------------------------------------------
@@ -417,7 +434,7 @@ app.use((req, res, next): void => {
 
   const cookies = parseCookies(req.headers.cookie);
   const token = cookies['agentboard_session'];
-  if (token && db.hasSession(token)) { next(); return; }
+  if (isNonEmpty(token) && db.hasSession(token)) { next(); return; }
 
   // Non-HTML requests (JS, CSS, images) from unauthenticated clients → 401
   const accept = req.headers.accept ?? '';
@@ -472,12 +489,12 @@ const apollo = new ApolloServer({
   schema,
   plugins: [
     {
-      async serverWillStart() {
-        return {
-          async drainServer() {
+      serverWillStart(): Promise<GraphQLServerListener> {
+        return Promise.resolve({
+          async drainServer(): Promise<void> {
             await serverCleanup.dispose();
           },
-        };
+        });
       },
     },
   ],
